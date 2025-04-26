@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load socialaccount %}
+
+{% block title %}Login to RCA{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/login.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-header">
+            <h1>RCA</h1>
+            <p>Root Cause Analysis</p>
+        </div>
+        
+        <div class="login-body">
+            <h2>Sign in to your account</h2>
+            
+            {% if error %}
+            <div class="alert alert-error">
+                {{ error }}
+            </div>
+            {% endif %}
+            
+            <div class="login-options">
+                <a href="{% provider_login_url 'google' %}" class="google-login-btn">
+                    <i class="fab fa-google"></i>
+                    <span>Continue with Google</span>
+                </a>
+                
+                <div class="divider">
+                    <span>or</span>
+                </div>
+                
+                <form method="post" action="{% url 'core:login' %}" class="login-form">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <label for="id_email">Email</label>
+                        <input type="email" name="email" id="id_email" placeholder="your@email.com" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="id_password">Password</label>
+                        <input type="password" name="password" id="id_password" placeholder="••••••••" required>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <div class="remember-me">
+                            <input type="checkbox" name="remember" id="id_remember">
+                            <label for="id_remember">Remember me</label>
+                        </div>
+                        <a href="{% url 'account_reset_password' %}" class="forgot-password">Forgot password?</a>
+                    </div>
+                    
+                    <button type="submit" class="login-btn">Sign In</button>
+                </form>
+            </div>
+            
+            <div class="signup-prompt">
+                <p>Don't have an account? <a href="{% url 'core:signup' %}">Sign up</a></p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/login.js' %}"></script>
+{% endblock %}

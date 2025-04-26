@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load socialaccount %}
+
+{% block title %}Sign Up for RCA{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/login.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="login-container">
+    <div class="login-card">
+        <div class="login-header">
+            <h1>RCA</h1>
+            <p>Root Cause Analysis</p>
+        </div>
+        
+        <div class="login-body">
+            <h2>Create your account</h2>
+            
+            {% if error %}
+            <div class="alert alert-error">
+                {{ error }}
+            </div>
+            {% endif %}
+            
+            <div class="login-options">
+                <a href="{% provider_login_url 'google' %}" class="google-login-btn">
+                    <i class="fab fa-google"></i>
+                    <span>Sign up with Google</span>
+                </a>
+                
+                <div class="divider">
+                    <span>or</span>
+                </div>
+                
+                <form method="post" action="{% url 'core:signup' %}" class="login-form">
+                    {% csrf_token %}
+                    <div class="form-group">
+                        <label for="id_email">Email</label>
+                        <input type="email" name="email" id="id_email" placeholder="your@email.com" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="id_name">Full Name</label>
+                        <input type="text" name="name" id="id_name" placeholder="Your Name" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="id_password1">Password</label>
+                        <input type="password" name="password1" id="id_password1" placeholder="••••••••" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="id_password2">Confirm Password</label>
+                        <input type="password" name="password2" id="id_password2" placeholder="••••••••" required>
+                    </div>
+                    
+                    <button type="submit" class="login-btn">Sign Up</button>
+                </form>
+            </div>
+            
+            <div class="signup-prompt">
+                <p>Already have an account? <a href="{% url 'core:login' %}">Sign in</a></p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'js/login.js' %}"></script>
+{% endblock %}

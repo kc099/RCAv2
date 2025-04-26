@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}RCA Dashboard{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <header class="dashboard-header">
+        <h1>Welcome to RCA Dashboard</h1>
+        <div class="user-info">
+            <span>{{ request.user.name }}</span>
+            <a href="{% url 'core:logout' %}" class="logout-btn">Logout</a>
+        </div>
+    </header>
+    
+    <main class="dashboard-content">
+        <div class="dashboard-card">
+            <h2>Dashboard Overview</h2>
+            <p>Welcome to your dashboard. You are successfully logged in.</p>
+            <p>This is a placeholder for your main application content.</p>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+{% endblock %}
