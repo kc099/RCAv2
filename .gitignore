@@ -43,7 +43,7 @@ anaconda/
 miniconda/
 
 # Static files
-/static/
+
 /staticfiles/
 
 # Byte-compiled / optimized / DLL files

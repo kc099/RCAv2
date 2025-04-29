@@ -1,0 +1,196 @@
+/* Login page specific styles */
+.login-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 2rem 0;
+}
+
+.login-card {
+    background-color: var(--white);
+    border-radius: 1rem;
+    box-shadow: var(--box-shadow);
+    width: 100%;
+    max-width: 450px;
+    overflow: hidden;
+}
+
+.login-header {
+    background: linear-gradient(135deg, var(--primary-color), #818cf8);
+    color: var(--white);
+    padding: 2rem;
+    text-align: center;
+}
+
+.login-header h1 {
+    font-size: 2.5rem;
+    margin-bottom: 0.5rem;
+    font-weight: 700;
+}
+
+.login-header p {
+    opacity: 0.9;
+    font-size: 1rem;
+}
+
+.login-body {
+    padding: 2rem;
+}
+
+.login-body h2 {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+    text-align: center;
+    color: var(--text-color);
+}
+
+.login-options {
+    margin-bottom: 1.5rem;
+}
+
+.google-login-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    padding: 0.75rem 1rem;
+    background-color: var(--white);
+    border: 1px solid var(--border-color);
+    border-radius: 0.375rem;
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-color);
+    transition: background-color 0.3s ease;
+    margin-bottom: 1rem;
+}
+
+.google-login-btn:hover {
+    background-color: #f3f4f6;
+    color: var(--text-color);
+}
+
+.google-login-btn i {
+    font-size: 1.25rem;
+    margin-right: 0.75rem;
+    color: #ea4335;
+}
+
+.divider {
+    position: relative;
+    text-align: center;
+    margin: 1.5rem 0;
+}
+
+.divider::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background-color: var(--border-color);
+}
+
+.divider span {
+    position: relative;
+    background-color: var(--white);
+    padding: 0 1rem;
+    color: var(--text-light);
+    font-size: 0.875rem;
+}
+
+.login-form .form-group {
+    margin-bottom: 1.25rem;
+}
+
+.login-form label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--text-color);
+}
+
+.login-form input[type="email"],
+.login-form input[type="password"] {
+    border-radius: 0.375rem;
+    border: 1px solid var(--border-color);
+    padding: 0.75rem;
+    font-size: 1rem;
+    width: 100%;
+    transition: border-color 0.3s ease;
+}
+
+.login-form input[type="email"]:focus,
+.login-form input[type="password"]:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+.form-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.25rem;
+}
+
+.remember-me {
+    display: flex;
+    align-items: center;
+}
+
+.remember-me input[type="checkbox"] {
+    margin-right: 0.5rem;
+}
+
+.remember-me label {
+    font-size: 0.875rem;
+    margin-bottom: 0;
+    cursor: pointer;
+    color: var(--text-light);
+}
+
+.forgot-password {
+    font-size: 0.875rem;
+    color: var(--text-light);
+}
+
+.login-btn {
+    display: block;
+    width: 100%;
+    padding: 0.75rem;
+    background-color: var(--primary-color);
+    color: var(--white);
+    font-weight: 500;
+    font-size: 1rem;
+    border: none;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.login-btn:hover {
+    background-color: var(--primary-hover);
+}
+
+.signup-prompt {
+    margin-top: 1.5rem;
+    text-align: center;
+    font-size: 0.875rem;
+    color: var(--text-light);
+}
+
+.signup-prompt a {
+    font-weight: 500;
+}
+
+/* Error messages */
+.login-errors {
+    margin-bottom: 1.25rem;
+    color: var(--error-color);
+    font-size: 0.875rem;
+    background-color: rgba(239, 68, 68, 0.1);
+    padding: 0.75rem;
+    border-radius: 0.375rem;
+    border: 1px solid var(--error-color);
+}

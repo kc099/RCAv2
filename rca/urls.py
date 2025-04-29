@@ -26,6 +26,3 @@ urlpatterns = [
     path('', include('core.urls')),  # Keep core URLs last to avoid redirection issues
 ]
 
-# Add static file serving for development
-if settings.DEBUG:
-    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATICFILES_DIRS[0])

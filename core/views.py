@@ -36,21 +36,6 @@ def home(request):
     """Home page view - requires login"""
     return render(request, 'home.html')
 
-def debug_static(request):
-    """Debug view to check static file paths"""
-    static_dir = settings.STATICFILES_DIRS[0]
-    css_path = os.path.join(static_dir, 'css/main.css')
-    
-    content = f"""
-    <h1>Static File Debug Info</h1>
-    <p>STATIC_URL: {settings.STATIC_URL}</p>
-    <p>STATICFILES_DIRS: {settings.STATICFILES_DIRS}</p>
-    <p>STATIC_ROOT: {settings.STATIC_ROOT}</p>
-    <p>CSS file exists: {os.path.exists(css_path)}</p>
-    <p>CSS file path: {css_path}</p>
-    """
-    
-    return HttpResponse(content)
 
 def signup_view(request):
     """Signup page view"""
