@@ -123,6 +123,48 @@
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
 <link rel="stylesheet" href="{% static 'css/data_connection.css' %}">
+<style>
+    /* Override container styles from base template */
+    .container {
+        width: 100% !important;
+        max-width: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+    
+    /* Full-width layout */
+    .dashboard {
+        width: 100vw;
+        height: 100vh;
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        margin: 0;
+        padding: 0;
+        overflow-x: hidden;
+    }
+    
+    .dashboard-header {
+        position: sticky;
+        top: 0;
+        width: 100%;
+        box-sizing: border-box;
+        z-index: 100;
+    }
+    
+    .dashboard-content {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 2rem;
+    }
+    
+    .connection-hub {
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+</style>
 {% endblock %}
 
 {% block scripts %}

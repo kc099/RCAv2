@@ -1,72 +1,791 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}Workbench{% endblock %}
+{% block title %}MySQL Database - Datasage Workbench{% endblock %}
 
 {% block content %}
-<div class="dashboard">
-    <header class="dashboard-header">
-        <h1>Data Workbench</h1>
-        <div class="user-info">
+<div class="workbench-layout">
+    <!-- Header with database info -->
+    <header class="workbench-header">
+        <div class="database-info">
+            <h1>MySQL Database</h1>
+            <span class="connection-details">{{ connection.server }} | {{ connection.database }}</span>
+        </div>
+        <div class="user-actions">
             <span>{{ request.user.name }}</span>
+            <a href="{% url 'core:data_connection_hub' %}" class="btn btn-light btn-sm">Change Connection</a>
             <a href="{% url 'core:logout' %}" class="logout-btn">Logout</a>
         </div>
     </header>
     
-    <main class="dashboard-content">
-        <div class="workbench-container">
-            <div class="connection-info">
-                <h2>Connection Details</h2>
-                <p><strong>Type:</strong> {{ connection.type|title }}</p>
-                {% if connection.type != 'excel' and connection.type != 'csv' %}
-                <p><strong>Server:</strong> {{ connection.server }}</p>
-                <p><strong>Database:</strong> {{ connection.database }}</p>
-                {% endif %}
+    <div class="workbench-container">
+        <!-- Left sidebar: Schema browser -->
+        <aside class="schema-browser">
+            <div class="resizer" id="sidebar-resizer"></div>
+            <div class="search-box">
+                <input type="text" placeholder="Search tables..." id="table-search">
+                <button class="search-btn"><i class="fas fa-search"></i></button>
             </div>
             
-            <div class="workbench-placeholder">
-                <h2>Workbench</h2>
-                <p>Workbench functionality is currently in development.</p>
-                <p>You have successfully connected to your data source.</p>
-                <a href="{% url 'core:data_connection_hub' %}" class="btn btn-primary">Connect to Another Source</a>
+            <div class="schema-section">
+                <div class="section-header expanded" data-section="database-schemas">
+                    <i class="fas fa-chevron-down"></i>
+                    <span>DATABASE SCHEMAS</span>
+                </div>
+                <div class="section-content visible" id="database-schemas">
+                    <div class="schema expanded">
+                        <div class="schema-header">
+                            <i class="fas fa-database"></i>
+                            <span>public</span>
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                        <div class="schema-tables visible">
+                            <div class="table-item">
+                                <i class="fas fa-table"></i>
+                                <span>customers</span>
+                            </div>
+                            <div class="table-item">
+                                <i class="fas fa-table"></i>
+                                <span>orders</span>
+                            </div>
+                            <div class="table-item">
+                                <i class="fas fa-table"></i>
+                                <span>products</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
-    </main>
+            
+            <div class="schema-section">
+                <div class="section-header" data-section="temporary-tables">
+                    <i class="fas fa-chevron-right"></i>
+                    <span>TEMPORARY TABLES</span>
+                </div>
+                <div class="section-content" id="temporary-tables">
+                    <div class="table-item temp-table">
+                        <i class="fas fa-clock"></i>
+                        <span>temp_customers</span>
+                        <span class="row-count">(1243 rows)</span>
+                    </div>
+                    <div class="table-item temp-table">
+                        <i class="fas fa-clock"></i>
+                        <span>temp_recent_orders</span>
+                        <span class="row-count">(156 rows)</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- Main workspace -->
+        <main class="workspace">
+            <div class="workspace-tabs">
+                <div class="tab active" data-tab="sql-notebook">SQL Notebook</div>
+                <div class="tab" data-tab="results">Results</div>
+                <div class="tab" data-tab="query-examples">Query Examples</div>
+                <div class="tab" data-tab="documentation">Documentation</div>
+            </div>
+            
+            <div class="tab-content">
+                <!-- SQL Notebook Tab -->
+                <div class="tab-pane active" id="sql-notebook">
+                    <div class="nl-to-sql">
+                        <div class="nl-input-container">
+                            <input type="text" class="nl-input" placeholder="Describe what data you need in natural language...">
+                            <button class="nl-submit">Generate SQL</button>
+                        </div>
+                        <div class="example-prompts">
+                            <button class="example-prompt">Show me total sales by region...</button>
+                            <button class="example-prompt">Find customers who made more t...</button>
+                            <button class="example-prompt">What are the top selling prod...</button>
+                        </div>
+                    </div>
+                    
+                    <div class="sql-editor-container">
+                        <div class="editor-toolbar">
+                            <div class="toolbar-section">
+                                <button class="toolbar-btn"><i class="fas fa-play"></i> Run</button>
+                                <button class="toolbar-btn"><i class="fas fa-save"></i> Save</button>
+                            </div>
+                        </div>
+                        <div class="sql-editor" id="sql-editor">
+                            <pre>-- Write your SQL here
+SELECT * FROM public.customers LIMIT 10;</pre>
+                        </div>
+                    </div>
+                    
+                    <div class="add-cell">
+                        <button class="add-cell-btn"><i class="fas fa-plus"></i> Add Cell</button>
+                    </div>
+                </div>
+                
+                <!-- Results Tab -->
+                <div class="tab-pane" id="results">
+                    <div class="results-placeholder">
+                        <p>Run a query to see results here</p>
+                    </div>
+                </div>
+                
+                <!-- Query Examples Tab -->
+                <div class="tab-pane" id="query-examples">
+                    <div class="examples-placeholder">
+                        <p>Query examples will appear here</p>
+                    </div>
+                </div>
+                
+                <!-- Documentation Tab -->
+                <div class="tab-pane" id="documentation">
+                    <div class="documentation-layout">
+                        <!-- Project Documentation Section -->
+                        <div class="doc-section">
+                            <h3>Project Documentation</h3>
+                            <p class="doc-description">Upload documentation to provide context for SQL generation</p>
+                            
+                            <div class="upload-area">
+                                <div class="drag-drop-area">
+                                    <i class="fas fa-cloud-upload-alt"></i>
+                                    <p>Drag and drop files here</p>
+                                    <p class="small">or</p>
+                                    <button class="upload-btn">Upload Files</button>
+                                </div>
+                            </div>
+                            
+                            <div class="uploaded-docs">
+                                <h4>Uploaded Documentation</h4>
+                                <p class="empty-state">No documentation uploaded yet</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Table Metadata Section -->
+                        <div class="doc-section">
+                            <h3>Table Metadata</h3>
+                            <p class="doc-description">Document tables and columns to improve SQL generation accuracy</p>
+                            
+                            <div class="table-metadata">
+                                <h4>Document Specific Tables</h4>
+                                
+                                <div class="metadata-table">
+                                    <div class="metadata-table-item">
+                                        <div class="table-info">
+                                            <span class="table-name">public.customers</span>
+                                            <span class="table-stats">4 columns, approximately 1243 rows</span>
+                                        </div>
+                                        <button class="add-doc-btn">Add Documentation</button>
+                                    </div>
+                                    
+                                    <div class="metadata-table-item">
+                                        <div class="table-info">
+                                            <span class="table-name">public.orders</span>
+                                            <span class="table-stats">5 columns, approximately 8721 rows</span>
+                                        </div>
+                                        <button class="add-doc-btn">Add Documentation</button>
+                                    </div>
+                                    
+                                    <div class="metadata-table-item">
+                                        <div class="table-info">
+                                            <span class="table-name">public.products</span>
+                                            <span class="table-stats">5 columns, approximately 356 rows</span>
+                                        </div>
+                                        <button class="add-doc-btn">Add Documentation</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Make sidebar resizable
+        const schemaBrowser = document.querySelector('.schema-browser');
+        const resizer = document.getElementById('sidebar-resizer');
+        const container = document.querySelector('.workbench-container');
+        
+        let isResizing = false;
+        let initialWidth;
+        let initialX;
+        
+        resizer.addEventListener('mousedown', function(e) {
+            isResizing = true;
+            initialWidth = schemaBrowser.offsetWidth;
+            initialX = e.clientX;
+            schemaBrowser.classList.add('resizing');
+            
+            // Prevent text selection during resize
+            document.body.style.userSelect = 'none';
+            document.body.style.cursor = 'ew-resize';
+        });
+        
+        document.addEventListener('mousemove', function(e) {
+            if (!isResizing) return;
+            
+            const delta = e.clientX - initialX;
+            const newWidth = initialWidth + delta;
+            
+            // Limit width to maximum 30% of container width
+            const maxWidth = container.offsetWidth * 0.3;
+            // Minimum width to keep the sidebar usable
+            const minWidth = 200;
+            
+            if (newWidth > minWidth && newWidth < maxWidth) {
+                schemaBrowser.style.width = newWidth + 'px';
+            }
+        });
+        
+        document.addEventListener('mouseup', function() {
+            if (isResizing) {
+                isResizing = false;
+                schemaBrowser.classList.remove('resizing');
+                
+                // Restore normal behavior
+                document.body.style.userSelect = '';
+                document.body.style.cursor = '';
+            }
+        });
+        
+        // Tab switching
+        const tabs = document.querySelectorAll('.workspace-tabs .tab');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                // Remove active class from all tabs
+                tabs.forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Hide all tab panes
+                const tabPanes = document.querySelectorAll('.tab-pane');
+                tabPanes.forEach(pane => pane.classList.remove('active'));
+                
+                // Show the selected tab pane
+                const targetTab = this.getAttribute('data-tab');
+                document.getElementById(targetTab).classList.add('active');
+            });
+        });
+        
+        // Schema section expandable/collapsible functionality
+        const sectionHeaders = document.querySelectorAll('.section-header');
+        sectionHeaders.forEach(header => {
+            header.addEventListener('click', function() {
+                const section = this.getAttribute('data-section');
+                const content = document.getElementById(section);
+                
+                this.classList.toggle('expanded');
+                content.classList.toggle('visible');
+                
+                // Toggle the chevron icon
+                const icon = this.querySelector('i');
+                if (icon.classList.contains('fa-chevron-right')) {
+                    icon.classList.replace('fa-chevron-right', 'fa-chevron-down');
+                } else {
+                    icon.classList.replace('fa-chevron-down', 'fa-chevron-right');
+                }
+            });
+        });
+        
+        // Schema expandable/collapsible functionality
+        const schemaHeaders = document.querySelectorAll('.schema-header');
+        schemaHeaders.forEach(header => {
+            header.addEventListener('click', function() {
+                const schemaContent = this.parentElement.querySelector('.schema-tables');
+                this.parentElement.classList.toggle('expanded');
+                schemaContent.classList.toggle('visible');
+                
+                // Toggle the chevron icon
+                const icon = this.querySelector('i:last-child');
+                if (icon.classList.contains('fa-chevron-right')) {
+                    icon.classList.replace('fa-chevron-right', 'fa-chevron-down');
+                } else {
+                    icon.classList.replace('fa-chevron-down', 'fa-chevron-right');
+                }
+            });
+        });
+        
+        // Table search functionality
+        const searchInput = document.getElementById('table-search');
+        searchInput.addEventListener('input', function() {
+            const searchTerm = this.value.toLowerCase();
+            const tableItems = document.querySelectorAll('.table-item');
+            
+            tableItems.forEach(item => {
+                const tableName = item.querySelector('span').textContent.toLowerCase();
+                if (tableName.includes(searchTerm)) {
+                    item.style.display = 'flex';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        });
+    });
+</script>
 {% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
 <style>
-    .workbench-container {
+    /* Override container styles from base template */
+    .container {
+        width: 100% !important;
+        max-width: none !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+    
+    /* Workbench Layout */
+    .workbench-layout {
         display: flex;
         flex-direction: column;
-        gap: 2rem;
+        height: 100vh;
+        width: 100vw;
+        overflow: hidden;
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        margin: 0;
+        padding: 0;
     }
     
-    .connection-info, .workbench-placeholder {
-        background-color: var(--white);
-        border-radius: 0.5rem;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        padding: 2rem;
+    .workbench-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 2rem;
+        background-color: var(--primary-color);
+        color: white;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
     
-    .connection-info h2, .workbench-placeholder h2 {
+    .workbench-header h1 {
+        margin: 0;
+        font-size: 1.5rem;
+    }
+    
+    .connection-details {
+        font-size: 0.875rem;
+        opacity: 0.8;
+    }
+    
+    .user-actions {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 1rem;
+    }
+    
+    .btn-light {
+        background-color: #fff;
+        color: var(--primary-color);
+        border: none;
+        font-weight: 500;
+    }
+    
+    .btn-light:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .btn-sm {
+        padding: 0.35rem 0.75rem;
+        font-size: 0.875rem;
+        border-radius: 0.25rem;
+    }
+    
+    .workbench-container {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+    }
+    
+    /* Schema Browser Sidebar */
+    .schema-browser {
+        width: 300px;
+        max-width: 30%;
+        background-color: #f8f9fa;
+        border-right: 1px solid #e0e0e0;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+    }
+    
+    /* Resizer handle */
+    .resizer {
+        width: 8px;
+        height: 100%;
+        background-color: #e0e0e0;
+        position: absolute;
+        right: -4px;
+        top: 0;
+        cursor: ew-resize;
+        z-index: 10;
+    }
+    
+    .resizer:hover, .resizing .resizer {
+        background-color: var(--primary-color);
+    }
+    
+    .resizing {
+        user-select: none;
+    }
+    
+    .search-box {
+        padding: 1rem;
+        border-bottom: 1px solid #e0e0e0;
+        display: flex;
+    }
+    
+    .search-box input {
+        flex: 1;
+        padding: 0.5rem;
+        border: 1px solid #ced4da;
+        border-right: none;
+        border-radius: 0.25rem 0 0 0.25rem;
+    }
+    
+    .search-btn {
+        padding: 0.5rem 0.75rem;
+        background-color: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 0 0.25rem 0.25rem 0;
+        cursor: pointer;
+    }
+    
+    .schema-section {
         margin-bottom: 1rem;
-        color: var(--text-color);
     }
     
-    .connection-info p {
+    .section-header {
+        padding: 0.75rem 1rem;
+        font-weight: 500;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #495057;
+    }
+    
+    .section-header:hover {
+        background-color: #f1f3f5;
+    }
+    
+    .section-content {
+        display: none;
+        padding-left: 1.5rem;
+    }
+    
+    .section-content.visible {
+        display: block;
+    }
+    
+    .schema {
         margin-bottom: 0.5rem;
     }
     
-    .workbench-placeholder {
-        margin-top: 1rem;
+    .schema-header {
+        padding: 0.5rem 0;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .schema-tables {
+        display: none;
+        padding-left: 1.5rem;
+    }
+    
+    .schema-tables.visible {
+        display: block;
+    }
+    
+    .table-item {
+        padding: 0.5rem 0;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+    }
+    
+    .table-item:hover {
+        color: var(--primary-color);
+    }
+    
+    .row-count {
+        font-size: 0.75rem;
+        color: #6c757d;
+        margin-left: auto;
+    }
+    
+    /* Main Workspace */
+    .workspace {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    
+    .workspace-tabs {
+        display: flex;
+        border-bottom: 1px solid #e0e0e0;
+        background-color: white;
+    }
+    
+    .tab {
+        padding: 0.75rem 1.5rem;
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+    }
+    
+    .tab:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .tab.active {
+        border-bottom-color: var(--primary-color);
+        color: var(--primary-color);
+        font-weight: 500;
+    }
+    
+    .tab-content {
+        flex: 1;
+        overflow: auto;
+        position: relative;
+    }
+    
+    .tab-pane {
+        display: none;
+        height: 100%;
+        overflow: auto;
+    }
+    
+    .tab-pane.active {
+        display: block;
+    }
+    
+    /* SQL Notebook Tab */
+    .nl-to-sql {
+        padding: 1rem;
+        background-color: #f8f9fa;
+        border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .nl-input-container {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .nl-input {
+        flex: 1;
+        padding: 0.75rem 1rem;
+        border: 1px solid #ced4da;
+        border-radius: 0.25rem;
+        font-size: 1rem;
+    }
+    
+    .nl-submit {
+        padding: 0.75rem 1.5rem;
+        background-color: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 0.25rem;
+        cursor: pointer;
+        font-weight: 500;
+    }
+    
+    .example-prompts {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-top: 0.75rem;
+    }
+    
+    .example-prompt {
+        padding: 0.5rem 0.75rem;
+        background-color: #e9ecef;
+        border: none;
+        border-radius: 1rem;
+        font-size: 0.875rem;
+        cursor: pointer;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 250px;
+    }
+    
+    .example-prompt:hover {
+        background-color: #dee2e6;
+    }
+    
+    .sql-editor-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        padding: 1rem;
+    }
+    
+    .editor-toolbar {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 0.5rem;
+    }
+    
+    .toolbar-section {
+        display: flex;
+        gap: 0.5rem;
+    }
+    
+    .toolbar-btn {
+        padding: 0.5rem 1rem;
+        background-color: #f8f9fa;
+        border: 1px solid #ced4da;
+        border-radius: 0.25rem;
+        cursor: pointer;
+    }
+    
+    .toolbar-btn:hover {
+        background-color: #e9ecef;
+    }
+    
+    .sql-editor {
+        flex: 1;
+        background-color: #f8f9fa;
+        padding: 1rem;
+        border: 1px solid #ced4da;
+        border-radius: 0.25rem;
+        min-height: 200px;
+        max-height: 400px;
+        overflow: auto;
+        font-family: monospace;
+    }
+    
+    .add-cell {
+        padding: 1rem;
         text-align: center;
     }
     
-    .workbench-placeholder .btn {
-        margin-top: 1.5rem;
+    .add-cell-btn {
+        padding: 0.5rem 1rem;
+        background-color: transparent;
+        border: 1px dashed #ced4da;
+        border-radius: 0.25rem;
+        color: #6c757d;
+        cursor: pointer;
+        width: 100%;
+    }
+    
+    .add-cell-btn:hover {
+        background-color: #f8f9fa;
+    }
+    
+    /* Documentation Tab */
+    .documentation-layout {
+        display: flex;
+        height: 100%;
+    }
+    
+    .doc-section {
+        flex: 1;
+        padding: 1.5rem;
+        overflow: auto;
+    }
+    
+    .doc-section h3 {
+        margin-top: 0;
+        margin-bottom: 0.5rem;
+    }
+    
+    .doc-description {
+        margin-bottom: 1.5rem;
+        color: #6c757d;
+    }
+    
+    .upload-area {
+        margin-bottom: 2rem;
+    }
+    
+    .drag-drop-area {
+        border: 2px dashed #ced4da;
+        border-radius: 0.5rem;
+        padding: 2rem;
+        text-align: center;
+        color: #6c757d;
+    }
+    
+    .drag-drop-area i {
+        font-size: 2rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .drag-drop-area .small {
+        font-size: 0.875rem;
+        margin: 0.5rem 0;
+    }
+    
+    .upload-btn {
+        padding: 0.5rem 1.5rem;
+        background-color: var(--primary-color);
+        color: white;
+        border: none;
+        border-radius: 0.25rem;
+        cursor: pointer;
+        margin-top: 0.5rem;
+    }
+    
+    .uploaded-docs h4, .table-metadata h4 {
+        margin-bottom: 1rem;
+    }
+    
+    .empty-state {
+        color: #6c757d;
+        font-style: italic;
+    }
+    
+    .metadata-table {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .metadata-table-item {
+        padding: 1rem;
+        border: 1px solid #e0e0e0;
+        border-radius: 0.25rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .table-info {
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .table-name {
+        font-weight: 500;
+        margin-bottom: 0.25rem;
+    }
+    
+    .table-stats {
+        font-size: 0.875rem;
+        color: #6c757d;
+    }
+    
+    .add-doc-btn {
+        padding: 0.5rem 1rem;
+        background-color: #e9ecef;
+        border: none;
+        border-radius: 0.25rem;
+        cursor: pointer;
+    }
+    
+    .add-doc-btn:hover {
+        background-color: #dee2e6;
     }
 </style>
 {% endblock %}

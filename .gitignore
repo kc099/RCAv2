@@ -44,7 +44,7 @@ miniconda/
 
 # Static files
 
-
+*.png
 
 # Byte-compiled / optimized / DLL files
 *.py[cod]
