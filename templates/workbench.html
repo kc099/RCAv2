@@ -13,6 +13,7 @@
         </div>
         <div class="user-actions">
             <span>{{ request.user.name }}</span>
+            <a href="{% url 'core:home' %}" class="btn btn-light btn-sm">Home</a>
             <a href="{% url 'core:data_connection_hub' %}" class="btn btn-light btn-sm">Change Connection</a>
             <a href="{% url 'core:logout' %}" class="logout-btn">Logout</a>
         </div>

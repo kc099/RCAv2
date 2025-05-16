@@ -1,0 +1,17 @@
+Oauth Features added but google cloud creds setup pending.
+
+Security Features:
+Encrypted user passwords.
+Encrypted database connection credentials.
+
+To do:
+Encrypt all user db details including database name and username etc.
+Encrypt the password even before sending to database.
+move .env to aws secrets during production.
+
+Notsure:
+settings doesnot have ENCRYPTION_KEY, not sure how encryption.py works.
+
+
+Features:
+Notebook and cell, creation and execution with models and api routes.

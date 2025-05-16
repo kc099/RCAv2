@@ -9,6 +9,7 @@
         <h1>Data Connection Hub</h1>
         <div class="user-info">
             <span>{{ request.user.name }}</span>
+            <a href="{% url 'core:home' %}" class="btn btn-light btn-sm">Home</a>
             <a href="{% url 'core:logout' %}" class="logout-btn">Logout</a>
         </div>
     </header>
