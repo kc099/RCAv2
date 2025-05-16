@@ -42,6 +42,25 @@
                 </div>
             </div>
         </div>
+        
+        <!-- Notebooks Section -->
+        <h2 class="section-title">Your Notebooks</h2>
+        <div class="notebooks-container">
+            {% if notebooks %}
+            <div class="notebooks-list">
+                {% for notebook in notebooks %}
+                <a href="{% url 'core:open_notebook' notebook.id %}" class="notebook-list-item">
+                    <div class="notebook-title">{{ notebook.title }}</div>
+                    <div class="notebook-modified">{{ notebook.last_modified|date:"M d, Y H:i" }}</div>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">
+                <p>You don't have any notebooks yet. Create one from the Connect to Database card above.</p>
+            </div>
+            {% endif %}
+        </div>
     </main>
 </div>
 {% endblock %}

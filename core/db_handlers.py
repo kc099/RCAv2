@@ -9,7 +9,7 @@ def execute_mysql_query(connection_info, query):
     """Execute query in MySQL database"""
     try:
         conn = mysql.connector.connect(
-            host=connection_info.get('server'),
+            host=connection_info.get('host'),
             port=connection_info.get('port'),
             database=connection_info.get('database'),
             user=connection_info.get('username'),
@@ -52,7 +52,7 @@ def execute_redshift_query(connection_info, query):
     # Real implementation would look something like this:
     # try:
     #     conn = psycopg2.connect(
-    #         host=connection_info.get('server'),
+    #         host=connection_info.get('host'),
     #         port=connection_info.get('port'),
     #         dbname=connection_info.get('database'),
     #         user=connection_info.get('username'),

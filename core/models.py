@@ -6,6 +6,8 @@ from django.contrib.auth.models import (
     PermissionsMixin,
 )
 import time
+import json
+from .encryption import encrypt_dict, decrypt_dict
 
 
 class UserManager(BaseUserManager):
@@ -128,7 +130,87 @@ class NormalUser(models.Model):
     def __str__(self):
         return f"{self.user.name} - User"
 
-# core/models.py
+
+# Database Connection Model
+class DatabaseConnection(models.Model):
+    """Stores database connection information with encrypted credentials"""
+    CONNECTION_TYPES = [
+        ('mysql', 'MySQL'),
+        ('postgresql', 'PostgreSQL'),
+        ('redshift', 'Amazon Redshift'),
+        ('snowflake', 'Snowflake'),
+        ('bigquery', 'Google BigQuery'),
+        ('sqlite', 'SQLite'),
+    ]
+    
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    connection_type = models.CharField(max_length=50, choices=CONNECTION_TYPES)
+    host = models.CharField(max_length=255, blank=True)
+    port = models.IntegerField(null=True, blank=True)
+    database = models.CharField(max_length=255)
+    username = models.CharField(max_length=255, blank=True)
+    password = models.TextField(blank=True, help_text="This will be stored encrypted")
+    ssl_enabled = models.BooleanField(default=False)
+    ssl_ca = models.TextField(blank=True)
+    ssl_cert = models.TextField(blank=True)
+    ssl_key = models.TextField(blank=True)
+    additional_params = models.JSONField(null=True, blank=True)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='connections'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def __str__(self):
+        return f"{self.name} ({self.connection_type})" 
+    
+    def save(self, *args, **kwargs):
+        # Encrypt sensitive fields before saving
+        self.password = encrypt_dict({"password": self.password}).get("password", "")
+        if self.additional_params:
+            # Encrypt any sensitive fields in additional_params
+            if isinstance(self.additional_params, str):
+                try:
+                    params_dict = json.loads(self.additional_params)
+                    self.additional_params = encrypt_dict(params_dict)
+                except json.JSONDecodeError:
+                    pass
+            elif isinstance(self.additional_params, dict):
+                self.additional_params = encrypt_dict(self.additional_params)
+        
+        super().save(*args, **kwargs)
+    
+    def get_connection_config(self):
+        """Return a decrypted connection configuration dict"""
+        config = {
+            'type': self.connection_type,
+            'host': self.host,
+            'port': self.port,
+            'database': self.database,
+            'username': self.username,
+        }
+        
+        # Decrypt password
+        if self.password:
+            config['password'] = decrypt_dict({"password": self.password, "password_encrypted": True}).get("password", "")
+        
+        # Add SSL if enabled
+        if self.ssl_enabled:
+            config['ssl_ca'] = self.ssl_ca
+            config['ssl_cert'] = self.ssl_cert
+            config['ssl_key'] = self.ssl_key
+        
+        # Add additional params if any
+        if self.additional_params:
+            if isinstance(self.additional_params, dict):
+                decrypted_params = decrypt_dict(self.additional_params)
+                config.update(decrypted_params)
+        
+        return config
+
 
 class SQLNotebook(models.Model):
     """Notebook model for SQL queries"""
@@ -139,14 +221,30 @@ class SQLNotebook(models.Model):
         on_delete=models.CASCADE, 
         related_name='notebooks'
     )
-    connection_info = models.JSONField(null=True, blank=True)  # Store connection details
+    # We'll keep connection_info for backward compatibility
+    connection_info = models.JSONField(null=True, blank=True)
+    # New reference to DatabaseConnection model
+    database_connection = models.ForeignKey(
+        DatabaseConnection,
+        on_delete=models.SET_NULL, 
+        related_name='notebooks',
+        null=True,
+        blank=True
+    )
     last_modified = models.FloatField(default=time.time)
     created_at = models.DateTimeField(auto_now_add=True)
     
     def save(self, *args, **kwargs):
+        # Update last_modified timestamp on save
         self.last_modified = time.time()
         super().save(*args, **kwargs)
     
+    def get_connection_info(self):
+        """Get connection info, prioritizing the database_connection if available"""
+        if self.database_connection:
+            return self.database_connection.get_connection_config()
+        return self.connection_info
+        
     def __str__(self):
         return self.title
 
