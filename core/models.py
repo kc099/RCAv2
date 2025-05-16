@@ -127,3 +127,47 @@ class NormalUser(models.Model):
     
     def __str__(self):
         return f"{self.user.name} - User"
+
+# core/models.py
+
+class SQLNotebook(models.Model):
+    """Notebook model for SQL queries"""
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE, 
+        related_name='notebooks'
+    )
+    connection_info = models.JSONField(null=True, blank=True)  # Store connection details
+    last_modified = models.FloatField(default=time.time)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def save(self, *args, **kwargs):
+        self.last_modified = time.time()
+        super().save(*args, **kwargs)
+    
+    def __str__(self):
+        return self.title
+
+
+class SQLCell(models.Model):
+    """Individual cell within a SQL notebook"""
+    notebook = models.ForeignKey(
+        SQLNotebook,
+        on_delete=models.CASCADE,
+        related_name='cells'
+    )
+    order = models.IntegerField()  # For ordering cells in the notebook
+    query = models.TextField(blank=True)
+    result = models.JSONField(null=True, blank=True)  # Store execution results
+    is_executed = models.BooleanField(default=False)
+    execution_time = models.FloatField(null=True, blank=True)  # Time taken to execute
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['order']
+        
+    def __str__(self):
+        return f"Cell {self.order} in {self.notebook.title}"

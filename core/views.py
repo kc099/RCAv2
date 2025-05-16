@@ -1,12 +1,19 @@
-from django.shortcuts import render, redirect
+from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from django.http import HttpResponse, JsonResponse
 from django.conf import settings
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.models import User
+from django.db import models
 import os
+import mimetypes
 import json
+from datetime import datetime
+from .forms import LoginForm, SignupForm
+from .models import SQLNotebook, SQLCell
 import mysql.connector
-from django.contrib.auth import get_user_model, authenticate, login, logout
+from .db_handlers import execute_mysql_query, execute_redshift_query
 
 # Create your views here.
 def login_view(request):
@@ -199,8 +206,274 @@ def workbench(request):
     if not db_connection:
         return redirect('core:data_connection_hub')
     
+    # Check if user has any notebooks, if not create one
+    notebooks = SQLNotebook.objects.filter(user=request.user)
+    
+    if notebooks.exists():
+        # Use the most recently modified notebook
+        notebook = notebooks.order_by('-last_modified').first()
+    else:
+        # Create a new notebook with the current connection info
+        notebook = SQLNotebook.objects.create(
+            title="Untitled Notebook",
+            description="",
+            user=request.user,
+            connection_info=db_connection
+        )
+        # Create initial cell
+        SQLCell.objects.create(
+            notebook=notebook,
+            order=1,
+            query="-- Write your SQL here\nSELECT 1;"
+        )
+    
+    # Load the cells for this notebook and convert to serializable format
+    cells_queryset = notebook.cells.all().order_by('order')
+    
+    # Convert QuerySet to list of dictionaries for JSON serialization
+    cells_data = []
+    for cell in cells_queryset:
+        cells_data.append({
+            'id': cell.id,
+            'order': cell.order,
+            'query': cell.query,
+            'result': cell.result,
+            'is_executed': cell.is_executed,
+            'execution_time': cell.execution_time
+        })
+    
+    # JSON serialize the cells data for JavaScript
+    cells_json = json.dumps(cells_data)
+    
     context = {
-        'connection': db_connection
+        'connection': db_connection,
+        'notebook': notebook,
+        'cells': cells_json
     }
     
     return render(request, 'workbench.html', context)
+
+
+# core/views.py (Add these new views)
+
+@login_required(login_url='/login/')
+def notebook_list(request):
+    """View to list all notebooks for the current user"""
+    notebooks = SQLNotebook.objects.filter(user=request.user).order_by('-last_modified')
+    return render(request, 'notebook_list.html', {'notebooks': notebooks})
+
+@login_required(login_url='/login/')
+def create_notebook(request):
+    """Create a new notebook"""
+    if request.method == 'POST':
+        title = request.POST.get('title', 'Untitled Notebook')
+        description = request.POST.get('description', '')
+        # Get connection from session
+        connection_info = request.session.get('db_connection')
+        
+        notebook = SQLNotebook.objects.create(
+            title=title,
+            description=description,
+            user=request.user,
+            connection_info=connection_info
+        )
+        
+        # Create initial cell
+        SQLCell.objects.create(
+            notebook=notebook,
+            order=1,
+            query="-- Write your SQL here\nSELECT 1;"
+        )
+        
+        return redirect('core:open_notebook', notebook_id=notebook.id)
+    
+    return render(request, 'create_notebook.html')
+
+@login_required(login_url='/login/')
+def open_notebook(request, notebook_id):
+    """Open an existing notebook"""
+    notebook = get_object_or_404(SQLNotebook, id=notebook_id, user=request.user)
+    cells = notebook.cells.all().order_by('order')
+    
+    # Update session connection info based on notebook
+    if notebook.connection_info:
+        request.session['db_connection'] = notebook.connection_info
+    
+    context = {
+        'notebook': notebook,
+        'cells': cells,
+        'connection': notebook.connection_info
+    }
+    
+    return render(request, 'workbench.html', context)
+
+# API views for cell operations
+@login_required(login_url='/login/')
+def api_add_cell(request, notebook_id):
+    """Add a new cell to the notebook"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+    
+    notebook = get_object_or_404(SQLNotebook, id=notebook_id, user=request.user)
+    
+    # Get the highest order and add 1
+    max_order = SQLCell.objects.filter(notebook=notebook).aggregate(models.Max('order'))['order__max'] or 0
+    new_order = max_order + 1
+    
+    cell = SQLCell.objects.create(
+        notebook=notebook,
+        order=new_order,
+        query="-- Write your SQL here"
+    )
+    
+    return JsonResponse({
+        'success': True,
+        'cell_id': cell.id,
+        'order': cell.order
+    })
+
+@login_required(login_url='/login/')
+def api_update_cell(request, cell_id):
+    """Update cell content"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+    
+    cell = get_object_or_404(SQLCell, id=cell_id, notebook__user=request.user)
+    query = request.POST.get('query', '')
+    
+    cell.query = query
+    cell.save()
+    
+    # Update the notebook's last_modified time
+    cell.notebook.save()
+    
+    return JsonResponse({'success': True})
+
+@login_required(login_url='/login/')
+def api_execute_cell(request, cell_id):
+    """Execute SQL in a cell"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+    
+    cell = get_object_or_404(SQLCell, id=cell_id, notebook__user=request.user)
+    query = request.POST.get('query', cell.query)
+    
+    # Get connection info from the notebook
+    connection_info = cell.notebook.connection_info
+    
+    start_time = time.time()
+    try:
+        # Execute query (this will depend on your database adapter)
+        result = execute_sql_query(connection_info, query)
+        execution_time = time.time() - start_time
+        
+        # Update cell with results
+        cell.query = query
+        cell.result = result
+        cell.is_executed = True
+        cell.execution_time = execution_time
+        cell.save()
+        
+        # Update the notebook's last_modified time
+        cell.notebook.save()
+        
+        return JsonResponse({
+            'success': True,
+            'result': result,
+            'execution_time': execution_time
+        })
+        
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+@login_required(login_url='/login/')
+def api_delete_cell(request, cell_id):
+    """Delete a cell from a notebook"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+    
+    cell = get_object_or_404(SQLCell, id=cell_id, notebook__user=request.user)
+    notebook = cell.notebook
+    
+    # Delete the cell
+    cell.delete()
+    
+    # Update the notebook's last_modified time
+    notebook.save()
+    
+    return JsonResponse({
+        'success': True
+    })
+
+@login_required(login_url='/login/')
+def api_save_notebook(request, notebook_id):
+    """Save the entire notebook"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+    
+    notebook = get_object_or_404(SQLNotebook, id=notebook_id, user=request.user)
+    
+    try:
+        data = json.loads(request.body)
+        
+        # Update cells if provided
+        if 'cells' in data:
+            for cell_data in data['cells']:
+                cell_id = cell_data.get('id')
+                query = cell_data.get('query', '')
+                
+                if cell_id:
+                    # Update existing cell
+                    try:
+                        cell = SQLCell.objects.get(id=cell_id, notebook=notebook)
+                        cell.query = query
+                        cell.save()
+                    except SQLCell.DoesNotExist:
+                        pass  # Skip if cell doesn't exist
+        
+        # Update notebook's last_modified time
+        notebook.save()
+        
+        return JsonResponse({
+            'success': True
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+@login_required(login_url='/login/')
+def api_update_notebook_title(request, notebook_id):
+    """Update notebook title"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+    
+    notebook = get_object_or_404(SQLNotebook, id=notebook_id, user=request.user)
+    title = request.POST.get('title', '').strip()
+    
+    if not title:
+        title = 'Untitled Notebook'
+    
+    notebook.title = title
+    notebook.save()
+    
+    return JsonResponse({
+        'success': True
+    })
+
+# Helper function to execute SQL queries
+def execute_sql_query(connection_info, query):
+    """Execute SQL query based on connection type"""
+    conn_type = connection_info.get('type')
+    
+    if conn_type == 'mysql':
+        return execute_mysql_query(connection_info, query)
+    elif conn_type == 'redshift':
+        return execute_redshift_query(connection_info, query)
+    # Add more database types as needed
+    else:
+        raise ValueError(f"Unsupported database type: {conn_type}")
