@@ -1,0 +1,72 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Workbench{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <header class="dashboard-header">
+        <h1>Data Workbench</h1>
+        <div class="user-info">
+            <span>{{ request.user.name }}</span>
+            <a href="{% url 'core:logout' %}" class="logout-btn">Logout</a>
+        </div>
+    </header>
+    
+    <main class="dashboard-content">
+        <div class="workbench-container">
+            <div class="connection-info">
+                <h2>Connection Details</h2>
+                <p><strong>Type:</strong> {{ connection.type|title }}</p>
+                {% if connection.type != 'excel' and connection.type != 'csv' %}
+                <p><strong>Server:</strong> {{ connection.server }}</p>
+                <p><strong>Database:</strong> {{ connection.database }}</p>
+                {% endif %}
+            </div>
+            
+            <div class="workbench-placeholder">
+                <h2>Workbench</h2>
+                <p>Workbench functionality is currently in development.</p>
+                <p>You have successfully connected to your data source.</p>
+                <a href="{% url 'core:data_connection_hub' %}" class="btn btn-primary">Connect to Another Source</a>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+<style>
+    .workbench-container {
+        display: flex;
+        flex-direction: column;
+        gap: 2rem;
+    }
+    
+    .connection-info, .workbench-placeholder {
+        background-color: var(--white);
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        padding: 2rem;
+    }
+    
+    .connection-info h2, .workbench-placeholder h2 {
+        margin-bottom: 1rem;
+        color: var(--text-color);
+    }
+    
+    .connection-info p {
+        margin-bottom: 0.5rem;
+    }
+    
+    .workbench-placeholder {
+        margin-top: 1rem;
+        text-align: center;
+    }
+    
+    .workbench-placeholder .btn {
+        margin-top: 1.5rem;
+    }
+</style>
+{% endblock %}

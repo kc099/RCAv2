@@ -38,6 +38,7 @@ aiomysql~=0.2.0  # MySQL database adapter for asyncio
 
 boto3~=1.37.16
 openpyxl
+mysql-connector-python
 
 # Auth dependencies
 python-jose[cryptography]>=3.4.0

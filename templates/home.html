@@ -1,12 +1,12 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}RCA Dashboard{% endblock %}
+{% block title %}Datasage{% endblock %}
 
 {% block content %}
 <div class="dashboard">
     <header class="dashboard-header">
-        <h1>Welcome to RCA Dashboard</h1>
+        <h1>Welcome to Datasage</h1>
         <div class="user-info">
             <span>{{ request.user.name }}</span>
             <a href="{% url 'core:logout' %}" class="logout-btn">Logout</a>
@@ -14,10 +14,33 @@
     </header>
     
     <main class="dashboard-content">
-        <div class="dashboard-card">
-            <h2>Dashboard Overview</h2>
-            <p>Welcome to your dashboard. You are successfully logged in.</p>
-            <p>This is a placeholder for your main application content.</p>
+        <div class="dashboard-cards">
+            <!-- Database Connection Card -->
+            <div class="dashboard-card">
+                <h2>Connect to Database</h2>
+                <h3>Connect to your database to start querying data</h3>
+                <p>Connect to PostgreSQL, MySQL, SQL Server and more.</p>
+                <div class="card-footer">
+                    <a href="{% url 'core:data_connection_hub' %}" class="btn btn-primary">Connect</a>
+                </div>
+            </div>
+            
+            <!-- Trainer Dashboard Card -->
+            <div class="dashboard-card">
+                <h2>Trainer Dashboard</h2>
+                <h3>SQL+NL knowledge-graph trainer dashboard</h3>
+                <p>Train and validate your SQL knowledge graph with natural language.</p>
+            </div>
+            
+            <!-- Documentation Card -->
+            <div class="dashboard-card">
+                <h2>Documentation</h2>
+                <h3>Learn how to use the platform</h3>
+                <p>Read the documentation to learn how to get the most out of our platform.</p>
+                <div class="card-footer">
+                    <a href="#" class="btn btn-secondary">Read Docs</a>
+                </div>
+            </div>
         </div>
     </main>
 </div>

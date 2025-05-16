@@ -1,0 +1,307 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Data Connection Hub{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <header class="dashboard-header">
+        <h1>Data Connection Hub</h1>
+        <div class="user-info">
+            <span>{{ request.user.name }}</span>
+            <a href="{% url 'core:logout' %}" class="logout-btn">Logout</a>
+        </div>
+    </header>
+    
+    <main class="dashboard-content">
+        <div class="connection-hub">
+            <h2>Connect to your data sources and start analyzing</h2>
+            
+            <div class="tabs">
+                <div class="tab-header">
+                    <div class="tab-item active" data-tab="databases" onclick="switchTab('databases')">Databases</div>
+                    <div class="tab-item" data-tab="files" onclick="switchTab('files')">Files</div>
+                    <div class="tab-item" data-tab="cloud" onclick="switchTab('cloud')">Cloud Storage</div>
+                </div>
+                
+                <div class="tab-content">
+                    <!-- Databases Tab -->
+                    <div class="tab-pane active" id="databases">
+                        <div class="connection-cards">
+                            <div class="connection-card" data-type="redshift" onclick="showModal('redshift')">
+                                <h3>Amazon Redshift</h3>
+                                <p>Connect to your Amazon Redshift data warehouse</p>
+                            </div>
+                            
+                            <div class="connection-card" data-type="snowflake" onclick="showModal('snowflake')">
+                                <h3>Snowflake</h3>
+                                <p>Connect to your Snowflake data platform</p>
+                            </div>
+                            
+                            <div class="connection-card" data-type="mysql" onclick="showModal('mysql')">
+                                <h3>MySQL</h3>
+                                <p>Connect to your MySQL database server</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Files Tab -->
+                    <div class="tab-pane" id="files">
+                        <div class="connection-cards">
+                            <div class="connection-card" data-type="excel" onclick="selectFile('excel')">
+                                <h3>Excel Files</h3>
+                                <p>Import and analyze your Excel files</p>
+                                <input type="file" id="excel-file-input" accept=".xlsx" class="hidden-file-input">
+                            </div>
+                            
+                            <div class="connection-card" data-type="csv" onclick="selectFile('csv')">
+                                <h3>CSV Files</h3>
+                                <p>Import and analyze your CSV files</p>
+                                <input type="file" id="csv-file-input" accept=".csv" class="hidden-file-input">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Cloud Storage Tab -->
+                    <div class="tab-pane" id="cloud">
+                        <div class="connection-cards">
+                            <div class="connection-card" data-type="s3" onclick="showModal('s3')">
+                                <h3>Amazon S3</h3>
+                                <p>Connect to your Amazon S3 storage buckets</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+</div>
+
+<!-- Connection Form Modal -->
+<div class="modal" id="connection-modal" style="display: none;">
+    <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h2 id="modal-title">Connect to Database</h2>
+        
+        <form id="connection-form" onsubmit="submitConnectionForm(event)">
+            {% csrf_token %}
+            <input type="hidden" name="connection_type" id="connection-type">
+            
+            <div class="form-group">
+                <label for="server">Server</label>
+                <input type="text" id="server" name="server" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="port">Port</label>
+                <input type="text" id="port" name="port" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="database">Database</label>
+                <input type="text" id="database" name="database" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            
+            <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Connect</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+<link rel="stylesheet" href="{% static 'css/data_connection.css' %}">
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // IMPORTANT: Check if script is running
+    console.log('DATA CONNECTION SCRIPT RUNNING!');
+    
+    // Handle form submission using fetch API
+    function submitConnectionForm(event) {
+        event.preventDefault(); // Prevent default form submission
+        console.log('Submitting connection form...');
+        
+        // Get form data
+        const form = document.getElementById('connection-form');
+        const formData = new FormData(form);
+        
+        // Show loading indicator
+        const submitButton = form.querySelector('button[type="submit"]');
+        const originalButtonText = submitButton.textContent;
+        submitButton.textContent = 'Connecting...';
+        submitButton.disabled = true;
+        
+        // Submit form using fetch API
+        fetch('{% url "core:validate_connection" %}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('Form submission response:', data);
+            if (data.success) {
+                // Redirect to the workbench page
+                window.location.href = data.redirect_url;
+            } else {
+                // Show error message
+                alert('Connection error: ' + data.error);
+                submitButton.textContent = originalButtonText;
+                submitButton.disabled = false;
+            }
+        })
+        .catch(error => {
+            console.error('Form submission error:', error);
+            alert('An error occurred. Please try again.');
+            submitButton.textContent = originalButtonText;
+            submitButton.disabled = false;
+        });
+    }
+    
+    // Direct connection card click handlers
+    function showModal(type) {
+        console.log('showModal called for type:', type);
+        var modal = document.getElementById('connection-modal');
+        var titleElement = document.getElementById('modal-title');
+        var typeElement = document.getElementById('connection-type');
+        var portElement = document.getElementById('port');
+        
+        // Set title and port based on connection type
+        var title = 'Connect to Database';
+        var port = '';
+        
+        if (type === 'redshift') {
+            title = 'Connect to Amazon Redshift';
+            port = '5439';
+        } else if (type === 'snowflake') {
+            title = 'Connect to Snowflake';
+        } else if (type === 'mysql') {
+            title = 'Connect to MySQL';
+            port = '3306';
+        } else if (type === 's3') {
+            title = 'Connect to Amazon S3';
+        }
+        
+        // Update modal content
+        titleElement.textContent = title;
+        typeElement.value = type;
+        if (port) portElement.value = port;
+        
+        // Display modal
+        modal.style.display = 'block';
+        console.log('Modal displayed for', type);
+    }
+    
+    function closeModal() {
+        console.log('closeModal called');
+        var modal = document.getElementById('connection-modal');
+        modal.style.display = 'none';
+    }
+    
+    function selectFile(fileType) {
+        console.log('selectFile called for', fileType);
+        if (fileType === 'excel') {
+            document.getElementById('excel-file-input').click();
+        } else if (fileType === 'csv') {
+            document.getElementById('csv-file-input').click();
+        }
+    }
+    
+    function switchTab(tabName) {
+        console.log('switchTab called for', tabName);
+        // Remove active class from all tabs
+        var tabItems = document.querySelectorAll('.tab-item');
+        tabItems.forEach(function(tab) {
+            tab.classList.remove('active');
+        });
+        
+        // Add active class to selected tab
+        document.querySelector('[data-tab="' + tabName + '"]').classList.add('active');
+        
+        // Hide all tab panes
+        var tabPanes = document.querySelectorAll('.tab-pane');
+        tabPanes.forEach(function(pane) {
+            pane.classList.remove('active');
+        });
+        
+        // Show selected tab pane
+        document.getElementById(tabName).classList.add('active');
+    }
+    
+    function handleFileUpload(fileInput, type) {
+        console.log('handleFileUpload called for', type);
+        if (fileInput.files.length > 0) {
+            var file = fileInput.files[0];
+            console.log('Selected file:', file.name);
+            
+            var formData = new FormData();
+            formData.append('file', file);
+            formData.append('connection_type', type);
+            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
+            
+            fetch('{% url "core:validate_connection" %}', {
+                method: 'POST',
+                body: formData
+            })
+            .then(function(response) {
+                return response.json();
+            })
+            .then(function(data) {
+                if (data.success) {
+                    window.location.href = data.redirect_url;
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            })
+            .catch(function(error) {
+                console.error('Error:', error);
+                alert('An error occurred while processing the file.');
+            });
+        }
+    }
+    
+    // Add event listeners when DOM is loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('DOM fully loaded - setting up event listeners');
+        
+        // Setup file input handlers
+        document.getElementById('excel-file-input').addEventListener('change', function() {
+            handleFileUpload(this, 'excel');
+        });
+        
+        document.getElementById('csv-file-input').addEventListener('change', function() {
+            handleFileUpload(this, 'csv');
+        });
+        
+        // Setup modal close handlers
+        document.querySelector('.close-modal').addEventListener('click', function(e) {
+            e.preventDefault();
+            closeModal();
+        });
+        
+        // Close modal when clicking outside
+        window.addEventListener('click', function(e) {
+            var modal = document.getElementById('connection-modal');
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+    });
+</script>
+{% endblock %}
