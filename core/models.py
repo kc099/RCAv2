@@ -242,8 +242,32 @@ class SQLNotebook(models.Model):
     def get_connection_info(self):
         """Get connection info, prioritizing the database_connection if available"""
         if self.database_connection:
-            return self.database_connection.get_connection_config()
-        return self.connection_info
+            # Get configuration from the database connection
+            config = self.database_connection.get_connection_config()
+            print(f"Using database connection from {self.database_connection.name} with host: {config.get('host')}")
+            return config
+        elif self.connection_info:
+            # Verify the connection_info has all necessary fields and normalize field names
+            if isinstance(self.connection_info, dict):
+                # Handle the case where 'server' is used instead of 'host'
+                if 'server' in self.connection_info and not 'host' in self.connection_info:
+                    # Create a copy of the connection info with 'host' instead of 'server'
+                    normalized_connection = self.connection_info.copy()
+                    normalized_connection['host'] = normalized_connection.pop('server')
+                    print(f"Normalized connection info, changing 'server' to 'host': {normalized_connection['host']}")
+                    
+                    # Update the connection info for future use
+                    self.connection_info = normalized_connection
+                    self.save(update_fields=['connection_info'])
+                    return normalized_connection
+                elif 'host' in self.connection_info and self.connection_info['host']:
+                    print(f"Using connection_info with host: {self.connection_info.get('host')}")
+                    return self.connection_info
+            
+            print(f"Warning: connection_info is invalid or missing host: {self.connection_info}")
+        
+        print("No valid connection info found for notebook")
+        return None
         
     def __str__(self):
         return self.title

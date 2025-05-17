@@ -136,6 +136,8 @@ def validate_connection(request):
         username = request.POST.get('mysql_username')
         password = request.POST.get('mysql_password')
         
+        print(f"Attempting to connect to MySQL server: {host}:{port} database: {database} user: {username}")
+        
         try:
             # Validate the connection
             conn = mysql.connector.connect(
@@ -154,6 +156,8 @@ def validate_connection(request):
             cursor.close()
             conn.close()
             
+            print(f"Successfully connected to MySQL server at {host}:{port}")
+            
             # Create a DatabaseConnection object with encrypted credentials
             connection = DatabaseConnection.objects.create(
                 name=f"{database} on {host}",
@@ -167,8 +171,19 @@ def validate_connection(request):
                 user=request.user
             )
             
-            # Store connection info in session
-            request.session['db_connection'] = connection.get_connection_config()
+            # Store connection info in session with explicit values to ensure nothing is lost
+            connection_config = {
+                'type': 'mysql',
+                'host': host,  # Use 'host' consistently throughout the application
+                'port': int(port),
+                'database': database,
+                'username': username,
+                'password': password  # This will be securely stored in the session
+            }
+            
+            print(f"Saving connection to session with host: {host}, database: {database}")
+            
+            request.session['db_connection'] = connection_config
             request.session['db_connection_id'] = connection.id
             request.session.modified = True
             
@@ -586,18 +601,43 @@ def api_execute_cell(request, cell_id):
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
     
+    # Get the current database connection from session as fallback
+    session_connection = request.session.get('db_connection')
+    
     cell = get_object_or_404(SQLCell, id=cell_id, notebook__user=request.user)
     query = request.POST.get('query', cell.query)
     
-    # Get connection info from the notebook using the get_connection_info method
-    # which prioritizes the database_connection if available
-    connection_info = cell.notebook.get_connection_info()
+    # First try to get connection from the notebook's database_connection
+    connection_info = None
+    if cell.notebook.database_connection:
+        print(f"Using database connection from notebook: {cell.notebook.database_connection.name}")
+        connection_info = cell.notebook.database_connection.get_connection_config()
+    # Next, try to use the connection_info stored directly in the notebook
+    elif cell.notebook.connection_info and isinstance(cell.notebook.connection_info, dict):
+        # Make sure the connection_info has a valid host
+        if 'host' in cell.notebook.connection_info and cell.notebook.connection_info['host']:
+            print(f"Using connection_info stored in notebook with host: {cell.notebook.connection_info.get('host')}")
+            connection_info = cell.notebook.connection_info
+        else:
+            print(f"Notebook connection_info missing host, falling back to session")
+    
+    # If we still don't have a valid connection, fall back to the session connection
+    if not connection_info and session_connection:
+        print(f"Using connection from session with host: {session_connection.get('host')}")
+        connection_info = session_connection
+        
+        # Update the notebook with the session connection for future use
+        cell.notebook.connection_info = session_connection
+        cell.notebook.save()
     
     if not connection_info:
         return JsonResponse({
             'success': False,
             'error': 'No database connection available for this notebook.'
         })
+    
+    # Debug output of the connection being used
+    print(f"Executing query with connection to {connection_info.get('host')}:{connection_info.get('port')} database: {connection_info.get('database')}")
     
     start_time = time.time()
     try:
@@ -615,6 +655,12 @@ def api_execute_cell(request, cell_id):
         # Update the notebook's last_modified time
         cell.notebook.save()
         
+        # Ensure the connection is properly saved in the session as well
+        if cell.notebook.database_connection:
+            request.session['db_connection_id'] = cell.notebook.database_connection.id
+            request.session['db_connection'] = connection_info
+            request.session.modified = True
+        
         return JsonResponse({
             'success': True,
             'result': result,
@@ -622,6 +668,7 @@ def api_execute_cell(request, cell_id):
         })
         
     except Exception as e:
+        print(f"Query execution error: {str(e)}")
         return JsonResponse({
             'success': False,
             'error': str(e)

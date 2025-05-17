@@ -329,7 +329,7 @@ function formatResult(result) {
     
     try {
         // Format SQL results as a table
-        let html = '<table class="result-table"><thead><tr>';
+        let html = '<div class="result-table-wrapper"><table class="result-table"><thead><tr>';
         
         // Headers
         const headers = result.columns || [];
@@ -349,15 +349,35 @@ function formatResult(result) {
                 html += '<tr>';
                 headers.forEach(header => {
                     const value = row[header];
-                    html += `<td>${value !== null && value !== undefined ? value : 'NULL'}</td>`;
+                    // Safely format cell value, handling null, undefined, and long text
+                    let displayValue = 'NULL';
+                    
+                    if (value !== null && value !== undefined) {
+                        // Convert to string and handle long text values
+                        displayValue = String(value);
+                        
+                        // Escape HTML to prevent XSS
+                        displayValue = displayValue
+                            .replace(/&/g, '&amp;')
+                            .replace(/</g, '&lt;')
+                            .replace(/>/g, '&gt;')
+                            .replace(/"/g, '&quot;')
+                            .replace(/'/g, '&#039;');
+                    }
+                    
+                    html += `<td>${displayValue}</td>`;
                 });
                 html += '</tr>';
             });
+            
+            // Add result count
+            html += `</tbody></table>`;
+            html += `<div class="result-count">${result.rows.length} rows returned</div>`;
         } else {
-            html += `<tr><td colspan="${headers.length || 1}" class="no-data">No data returned</td></tr>`;
+            html += `<tr><td colspan="${headers.length || 1}" class="no-data">No data returned</td></tr></tbody></table>`;
         }
         
-        html += '</tbody></table>';
+        html += '</div>';
         return html;
     } catch (error) {
         console.error('Error formatting result:', error);
@@ -429,6 +449,9 @@ function executeCell(cellId) {
     const resultElement = cell.element.querySelector('.cell-result');
     resultElement.classList.remove('hidden');
     resultElement.querySelector('.result-content').innerHTML = '<div class="loading">Executing query...</div>';
+    
+    // Reset the height - it will expand after results come in
+    resultElement.style.maxHeight = '300px';
     
     // Call API to execute the cell
     fetch(`/api/cells/${cellId}/execute/`, {
