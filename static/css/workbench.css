@@ -233,16 +233,26 @@
     flex: 1;
     overflow: auto;
     position: relative;
+    width: 100%;
 }
 
 .tab-pane {
     display: none;
     height: 100%;
     overflow: auto;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0;
 }
 
 .tab-pane.active {
     display: block;
+}
+
+/* Ensure SQL tab has proper width */
+#sql-notebook {
+    max-width: 100%;
+    width: 100%;
 }
 
 /* SQL Notebook Tab */

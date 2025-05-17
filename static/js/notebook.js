@@ -423,6 +423,40 @@ function addCellEventListeners(cellElement, cellId) {
 }
 
 /**
+ * Helper function to toggle between compact and expanded result views
+ */
+function toggleResultView(resultElement, toggleBtn) {
+    if (resultElement.classList.contains('compact')) {
+        // Expand the results
+        resultElement.classList.remove('compact');
+        resultElement.classList.add('expanded');
+        toggleBtn.textContent = 'Compact view';
+    } else {
+        // Collapse the results
+        resultElement.classList.remove('expanded');
+        resultElement.classList.add('compact');
+        toggleBtn.textContent = 'Show all';
+    }
+}
+
+/**
+ * Helper function to adjust spacing between cells when results are shown/hidden
+ */
+function adjustCellSpacing(currentCell) {
+    // Find all cells in the notebook
+    const allCells = document.querySelectorAll('.sql-cell');
+    // Extra space for cells with visible results
+    allCells.forEach(cell => {
+        const resultElement = cell.querySelector('.cell-result');
+        if (resultElement && !resultElement.classList.contains('hidden')) {
+            cell.style.marginBottom = '2rem';
+        } else {
+            cell.style.marginBottom = '1.5rem';
+        }
+    });
+}
+
+/**
  * Execute SQL in a cell
  */
 function executeCell(cellId) {
@@ -448,10 +482,17 @@ function executeCell(cellId) {
     // Show loading indicator
     const resultElement = cell.element.querySelector('.cell-result');
     resultElement.classList.remove('hidden');
+    resultElement.classList.add('compact'); // Start with compact view by default
     resultElement.querySelector('.result-content').innerHTML = '<div class="loading">Executing query...</div>';
     
-    // Reset the height - it will expand after results come in
-    resultElement.style.maxHeight = '300px';
+    // Remove any existing toggle buttons
+    const existingToggleBtn = resultElement.querySelector('.toggle-result-size');
+    if (existingToggleBtn) {
+        existingToggleBtn.remove();
+    }
+    
+    // Make sure all cells below have proper spacing
+    adjustCellSpacing(cell.element);
     
     // Call API to execute the cell
     fetch(`/api/cells/${cellId}/execute/`, {
@@ -482,10 +523,38 @@ function executeCell(cellId) {
                 resultHeader.appendChild(timeSpan);
             }
             
-            resultElement.querySelector('.result-content').innerHTML = formatResult(data.result);
+            // Format and display the results
+            const resultContentEl = resultElement.querySelector('.result-content');
+            resultContentEl.innerHTML = formatResult(data.result);
+            
+            // Add a toggle button for large result sets, if there are a significant number of results
+            if (data.result && data.result.rows && data.result.rows.length > 10) {
+                const toggleBtn = document.createElement('button');
+                toggleBtn.className = 'toggle-result-size';
+                toggleBtn.textContent = 'Show all';
+                toggleBtn.addEventListener('click', function() {
+                    toggleResultView(resultElement, toggleBtn);
+                });
+                resultElement.appendChild(toggleBtn);
+            }
+            
+            // Update spacing for all cells to account for the new content
+            adjustCellSpacing(cell.element);
+            
+            // If this isn't the last cell, scroll it into view to ensure user can see results
+            const cellIndex = Array.from(document.querySelectorAll('.sql-cell')).indexOf(cell.element);
+            const totalCells = document.querySelectorAll('.sql-cell').length;
+            if (cellIndex < totalCells - 1) {
+                setTimeout(() => {
+                    cell.element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }, 100);
+            }
         } else {
             resultElement.querySelector('.result-content').innerHTML = 
                 `<div class="error-result">Error: ${data.error || 'Unknown error occurred'}</div>`;
+            
+            // Even for errors, update the cell spacing
+            adjustCellSpacing(cell.element);
         }
     })
     .catch(error => {
