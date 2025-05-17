@@ -11,6 +11,7 @@ move .env to aws secrets during production.
 
 Notsure:
 settings doesnot have ENCRYPTION_KEY, not sure how encryption.py works.
+login seems to be active for a long time after first login. in the same browser ip or all ips? Not checked.
 
 
 Features:

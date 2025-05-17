@@ -4,6 +4,22 @@ import mysql.connector
 # import psycopg2
 import json
 import time
+import datetime
+from typing import Any, Dict, List, Union
+
+def serialize_value(value: Any) -> Any:
+    """Convert non-serializable values to serializable ones"""
+    if isinstance(value, datetime.datetime):
+        return value.isoformat()
+    elif isinstance(value, datetime.date):
+        return value.isoformat()
+    elif isinstance(value, datetime.time):
+        return value.isoformat()
+    return value
+
+def serialize_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert all values in a row to serializable format"""
+    return {key: serialize_value(value) for key, value in row.items()}
 
 def execute_mysql_query(connection_info, query):
     """Execute query in MySQL database"""
@@ -23,9 +39,11 @@ def execute_mysql_query(connection_info, query):
         # Handle different query types
         if query.strip().upper().startswith(('SELECT', 'SHOW', 'DESCRIBE', 'EXPLAIN')):
             rows = cursor.fetchall()
+            # Serialize each row to handle datetime objects
+            serialized_rows = [serialize_row(row) for row in rows]
             result = {
                 'columns': [column[0] for column in cursor.description],
-                'rows': rows,
+                'rows': serialized_rows,  # Using serialized rows instead of raw rows
                 'rowCount': len(rows),
                 'time': time.time() - start_time
             }

@@ -28,7 +28,7 @@ function initNotebook() {
         return;
     }
     
-    console.log('Initializing notebook with ID:', notebookId);
+    console.log('Initializing notebook with UUID:', notebookId);
     
     // Set up event listeners
     const addCellBtn = document.getElementById('add-cell-btn');
@@ -120,7 +120,7 @@ function updateNotebookTitle(title) {
         titleInput.value = title;
     }
     
-    // Send update to server
+    // Send update to server using the UUID format
     fetch(`/api/notebooks/${notebookId}/update-title/`, {
         method: 'POST',
         headers: {
@@ -145,7 +145,7 @@ function updateNotebookTitle(title) {
  */
 function addNewCell() {
     console.log(`Adding cell to notebook ${notebookId}`);
-    // Call API to add a cell to the database
+    // Call API to add a cell to the database using the UUID format
     fetch(`/api/notebooks/${notebookId}/add-cell/`, {
         method: 'POST',
         headers: {
@@ -617,20 +617,27 @@ function deleteCell(cellId) {
 }
 
 /**
- * Save the notebook manually
+ * Save notebook to server
  */
 function saveNotebook() {
-    console.log('Saving notebook...');
+    // Collect all cell data
+    const cellsData = [];
+    
+    cells.forEach(cell => {
+        const editor = editors[cell.id];
+        if (editor) {
+            cellsData.push({
+                id: cell.id,
+                query: editor.getValue(),
+                order: cell.order
+            });
+        }
+    });
+    
     const titleInput = document.querySelector('.notebook-title-input');
-    const title = titleInput ? titleInput.value.trim() : 'Untitled Notebook';
+    const title = titleInput ? titleInput.value : 'Untitled Notebook';
     
-    // Gather all cell queries
-    const cellData = cells.map(cell => ({
-        id: cell.id,
-        query: editors[cell.id] ? editors[cell.id].getValue() : ''
-    }));
-    
-    // Call API to save the notebook
+    // Send data to server using the UUID format
     fetch(`/api/notebooks/${notebookId}/save/`, {
         method: 'POST',
         headers: {

@@ -49,7 +49,7 @@
             {% if notebooks %}
             <div class="notebooks-list">
                 {% for notebook in notebooks %}
-                <a href="{% url 'core:open_notebook' notebook.id %}" class="notebook-list-item">
+                <a href="{% url 'core:open_notebook' notebook.uuid %}" class="notebook-list-item">
                     <div class="notebook-title">{{ notebook.title }}</div>
                     <div class="notebook-modified">{{ notebook.last_modified|date:"M d, Y H:i" }}</div>
                 </a>

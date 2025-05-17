@@ -17,7 +17,7 @@ urlpatterns += [
     # Notebook routes
     path('notebooks/', views.notebook_list, name='notebook_list'),
     path('notebooks/create/', views.create_notebook, name='create_notebook'),
-    path('notebooks/<int:notebook_id>/', views.open_notebook, name='open_notebook'),
+    path('notebooks/<uuid:notebook_uuid>/', views.open_notebook, name='open_notebook'),
     path('notebooks/create/connection/<int:connection_id>/', views.create_notebook_with_connection, name='create_notebook_with_connection'),
     
     # Database connection routes
@@ -27,9 +27,9 @@ urlpatterns += [
     path('connections/<int:connection_id>/delete/', views.delete_connection, name='delete_connection'),
     
     # API endpoints
-    path('api/notebooks/<int:notebook_id>/add-cell/', views.api_add_cell, name='api_add_cell'),
-    path('api/notebooks/<int:notebook_id>/save/', views.api_save_notebook, name='api_save_notebook'), 
-    path('api/notebooks/<int:notebook_id>/update-title/', views.api_update_notebook_title, name='api_update_notebook_title'),
+    path('api/notebooks/<uuid:notebook_uuid>/add-cell/', views.api_add_cell, name='api_add_cell'),
+    path('api/notebooks/<uuid:notebook_uuid>/save/', views.api_save_notebook, name='api_save_notebook'), 
+    path('api/notebooks/<uuid:notebook_uuid>/update-title/', views.api_update_notebook_title, name='api_update_notebook_title'),
     path('api/cells/<int:cell_id>/update/', views.api_update_cell, name='api_update_cell'),
     path('api/cells/<int:cell_id>/execute/', views.api_execute_cell, name='api_execute_cell'),
     path('api/cells/<int:cell_id>/delete/', views.api_delete_cell, name='api_delete_cell'),

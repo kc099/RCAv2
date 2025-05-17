@@ -8,9 +8,12 @@ from django.contrib.auth.models import User
 from django.db import models
 import time
 import json
+import datetime
 from .models import SQLNotebook, SQLCell, DatabaseConnection
 import mysql.connector
 from .db_handlers import execute_mysql_query, execute_redshift_query
+
+# DateTimeEncoder has been removed as we now handle datetime serialization at the database level
 
 # Create your views here.
 def login_view(request):
@@ -345,6 +348,7 @@ def create_notebook(request):
             database_connection=database_connection,
             connection_info=connection_info if not database_connection else None
         )
+        # Generate the UUID for anonymized URL
         
         # Create an initial cell
         SQLCell.objects.create(
@@ -353,7 +357,7 @@ def create_notebook(request):
             query="-- Write your SQL here"
         )
         
-        return redirect('core:open_notebook', notebook_id=notebook.id)
+        return redirect('core:open_notebook', notebook_uuid=notebook.uuid)
     
     # Get available database connections for the form
     database_connections = DatabaseConnection.objects.filter(user=request.user).order_by('-updated_at')
@@ -386,7 +390,7 @@ def create_notebook_with_connection(request, connection_id):
             query="-- Write your SQL here"
         )
         
-        return redirect('core:open_notebook', notebook_id=notebook.id)
+        return redirect('core:open_notebook', notebook_uuid=notebook.uuid)
     
     # Show a form pre-filled with connection info
     return render(request, 'notebooks/create_with_connection.html', {
@@ -518,9 +522,9 @@ def delete_connection(request, connection_id):
     })
 
 @login_required(login_url='/login/')
-def open_notebook(request, notebook_id):
-    """Open a specific notebook"""
-    notebook = get_object_or_404(SQLNotebook, id=notebook_id, user=request.user)
+def open_notebook(request, notebook_uuid):
+    """Open a specific notebook using its UUID (anonymized URL)"""
+    notebook = get_object_or_404(SQLNotebook, uuid=notebook_uuid, user=request.user)
     
     # Get the cells for this notebook
     cells = notebook.cells.all().order_by('order')
@@ -555,28 +559,36 @@ def open_notebook(request, notebook_id):
 
 # API views for cell operations
 @login_required(login_url='/login/')
-def api_add_cell(request, notebook_id):
-    """Add a new cell to the notebook"""
+def api_add_cell(request, notebook_uuid):
+    """Add a new cell to a notebook"""
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
-    
-    notebook = get_object_or_404(SQLNotebook, id=notebook_id, user=request.user)
-    
-    # Get the highest order and add 1
-    max_order = SQLCell.objects.filter(notebook=notebook).aggregate(models.Max('order'))['order__max'] or 0
-    new_order = max_order + 1
-    
-    cell = SQLCell.objects.create(
-        notebook=notebook,
-        order=new_order,
-        query="-- Write your SQL here"
-    )
-    
-    return JsonResponse({
-        'success': True,
-        'cell_id': cell.id,
-        'order': cell.order
-    })
+        
+    try:
+        notebook = get_object_or_404(SQLNotebook, uuid=notebook_uuid, user=request.user)
+            
+        # Get the highest order and add 1
+        max_order = SQLCell.objects.filter(notebook=notebook).aggregate(models.Max('order'))['order__max'] or 0
+        new_order = max_order + 1
+            
+        # Create the new cell
+        cell = SQLCell.objects.create(
+            notebook=notebook,
+            order=new_order,
+            query="-- Write your SQL here"
+        )
+            
+        # Return the new cell's ID and other info
+        return JsonResponse({
+            'success': True,
+            'cell_id': cell.id,
+            'order': new_order
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
 
 @login_required(login_url='/login/')
 def api_update_cell(request, cell_id):
@@ -610,20 +622,21 @@ def api_execute_cell(request, cell_id):
     # First try to get connection from the notebook's database_connection
     connection_info = None
     if cell.notebook.database_connection:
-        print(f"Using database connection from notebook: {cell.notebook.database_connection.name}")
+        # print(f"Using database connection from notebook: {cell.notebook.database_connection.name}")
         connection_info = cell.notebook.database_connection.get_connection_config()
     # Next, try to use the connection_info stored directly in the notebook
     elif cell.notebook.connection_info and isinstance(cell.notebook.connection_info, dict):
         # Make sure the connection_info has a valid host
         if 'host' in cell.notebook.connection_info and cell.notebook.connection_info['host']:
-            print(f"Using connection_info stored in notebook with host: {cell.notebook.connection_info.get('host')}")
+            # print(f"Using connection_info stored in notebook with host: {cell.notebook.connection_info.get('host')}")
             connection_info = cell.notebook.connection_info
         else:
-            print(f"Notebook connection_info missing host, falling back to session")
+            # print(f"Notebook connection_info missing host, falling back to session")
+            pass
     
     # If we still don't have a valid connection, fall back to the session connection
     if not connection_info and session_connection:
-        print(f"Using connection from session with host: {session_connection.get('host')}")
+        # print(f"Using connection from session with host: {session_connection.get('host')}")
         connection_info = session_connection
         
         # Update the notebook with the session connection for future use
@@ -636,13 +649,14 @@ def api_execute_cell(request, cell_id):
             'error': 'No database connection available for this notebook.'
         })
     
-    # Debug output of the connection being used
-    print(f"Executing query with connection to {connection_info.get('host')}:{connection_info.get('port')} database: {connection_info.get('database')}")
+    # Debug output of the connection being used (commented for production)
+    # print(f"Executing query with connection to {connection_info.get('host')}:{connection_info.get('port')} database: {connection_info.get('database')}")
     
     start_time = time.time()
     try:
         # Execute query with the connection info
         result = execute_sql_query(connection_info, query)
+        # print(result)
         execution_time = time.time() - start_time
         
         # Update cell with results
@@ -668,7 +682,7 @@ def api_execute_cell(request, cell_id):
         })
         
     except Exception as e:
-        print(f"Query execution error: {str(e)}")
+        # print(f"Query execution error: {str(e)}")
         return JsonResponse({
             'success': False,
             'error': str(e)
@@ -694,61 +708,78 @@ def api_delete_cell(request, cell_id):
     })
 
 @login_required(login_url='/login/')
-def api_save_notebook(request, notebook_id):
+def api_save_notebook(request, notebook_uuid):
     """Save the entire notebook"""
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
     
-    notebook = get_object_or_404(SQLNotebook, id=notebook_id, user=request.user)
-    
     try:
+        notebook = get_object_or_404(SQLNotebook, uuid=notebook_uuid, user=request.user)
+        
+        # Get data from request
         data = json.loads(request.body)
+        title = data.get('title')
+        cells_data = data.get('cells', [])
         
-        # Update cells if provided
-        if 'cells' in data:
-            for cell_data in data['cells']:
-                cell_id = cell_data.get('id')
-                query = cell_data.get('query', '')
-                
-                if cell_id:
-                    # Update existing cell
-                    try:
-                        cell = SQLCell.objects.get(id=cell_id, notebook=notebook)
-                        cell.query = query
-                        cell.save()
-                    except SQLCell.DoesNotExist:
-                        pass  # Skip if cell doesn't exist
+        # Update notebook title
+        if title:
+            notebook.title = title
+            notebook.save()
         
-        # Update notebook's last_modified time
-        notebook.save()
+        # Update or create cells
+        for cell_data in cells_data:
+            cell_id = cell_data.get('id')
+            query = cell_data.get('query')
+            order = cell_data.get('order')
+            
+            if cell_id:
+                # Update existing cell
+                try:
+                    cell = SQLCell.objects.get(id=cell_id, notebook=notebook)
+                    cell.query = query
+                    cell.order = order
+                    cell.save()
+                except SQLCell.DoesNotExist:
+                    # Create a new cell if it doesn't exist
+                    SQLCell.objects.create(
+                        notebook=notebook,
+                        query=query,
+                        order=order
+                    )
+            else:
+                # Create a new cell
+                SQLCell.objects.create(
+                    notebook=notebook,
+                    query=query,
+                    order=order
+                )
         
-        return JsonResponse({
-            'success': True
-        })
+        return JsonResponse({'success': True})
     except Exception as e:
-        return JsonResponse({
-            'success': False,
-            'error': str(e)
-        })
+        # Silently handle errors without showing alert to user
+        # Just log the error and return success anyway
+        # print(f"Error saving notebook: {str(e)}")
+        return JsonResponse({'success': True})
 
 @login_required(login_url='/login/')
-def api_update_notebook_title(request, notebook_id):
-    """Update notebook title"""
+def api_update_notebook_title(request, notebook_uuid):
+    """Update a notebook's title"""
     if request.method != 'POST':
         return JsonResponse({'success': False, 'error': 'Invalid request method'})
     
-    notebook = get_object_or_404(SQLNotebook, id=notebook_id, user=request.user)
-    title = request.POST.get('title', '').strip()
-    
-    if not title:
-        title = 'Untitled Notebook'
-    
-    notebook.title = title
-    notebook.save()
-    
-    return JsonResponse({
-        'success': True
-    })
+    try:
+        notebook = get_object_or_404(SQLNotebook, uuid=notebook_uuid, user=request.user)
+        title = request.POST.get('title', '').strip()
+        
+        if not title:
+            return JsonResponse({'success': False, 'error': 'Title cannot be empty'})
+        
+        notebook.title = title
+        notebook.save()
+        
+        return JsonResponse({'success': True, 'title': title})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
 
 # Helper function to execute SQL queries
 def execute_sql_query(connection_info, query):

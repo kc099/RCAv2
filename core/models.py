@@ -8,6 +8,7 @@ from django.contrib.auth.models import (
 import time
 import json
 from .encryption import encrypt_dict, decrypt_dict
+import uuid
 
 
 class UserManager(BaseUserManager):
@@ -214,6 +215,7 @@ class DatabaseConnection(models.Model):
 
 class SQLNotebook(models.Model):
     """Notebook model for SQL queries"""
+    uuid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     user = models.ForeignKey(
@@ -244,7 +246,7 @@ class SQLNotebook(models.Model):
         if self.database_connection:
             # Get configuration from the database connection
             config = self.database_connection.get_connection_config()
-            print(f"Using database connection from {self.database_connection.name} with host: {config.get('host')}")
+            # print(f"Using database connection from {self.database_connection.name} with host: {config.get('host')}")
             return config
         elif self.connection_info:
             # Verify the connection_info has all necessary fields and normalize field names
