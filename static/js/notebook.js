@@ -61,6 +61,78 @@ function initNotebook() {
 }
 
 /**
+ * Initialize cell name editing functionality
+ */
+function initCellNameEditing(nameElement) {
+    if (!nameElement) return;
+    
+    const cellId = nameElement.dataset.cellId;
+    
+    // Double click to edit
+    nameElement.addEventListener('dblclick', () => {
+        // Create an input element
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'cell-name editing';
+        input.value = nameElement.textContent;
+        input.style.width = '300px';
+        
+        // Replace the name display with the input
+        nameElement.parentNode.replaceChild(input, nameElement);
+        input.focus();
+        input.select();
+        
+        // Save on blur
+        input.addEventListener('blur', () => {
+            saveCellName(cellId, input.value, input, nameElement);
+        });
+        
+        // Save on Enter key
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                saveCellName(cellId, input.value, input, nameElement);
+            } else if (e.key === 'Escape') {
+                // Cancel editing on Escape
+                input.parentNode.replaceChild(nameElement, input);
+            }
+        });
+    });
+}
+
+/**
+ * Save a cell's name to the server
+ */
+function saveCellName(cellId, name, inputElement, nameElement) {
+    // Update the name in the UI first
+    const displayName = name.trim() || 'Untitled Cell';
+    nameElement.textContent = displayName;
+    
+    // Replace the input with the name element
+    if (inputElement && inputElement.parentNode) {
+        inputElement.parentNode.replaceChild(nameElement, inputElement);
+    }
+    
+    // Update in memory
+    const cell = cells.find(c => c.id === parseInt(cellId));
+    if (cell) {
+        cell.name = displayName;
+    }
+    
+    // Send to server
+    fetch(`/api/cells/${cellId}/update-name/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCsrfToken(),
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: `name=${encodeURIComponent(displayName)}`
+    })
+    .catch(error => {
+        console.error('Error saving cell name:', error);
+    });
+}
+
+/**
  * Initialize editable notebook title
  */
 function initTitleEditing() {
@@ -148,7 +220,6 @@ function updateNotebookTitle(title) {
  * Add a new cell to the notebook
  */
 function addNewCell() {
-    console.log(`Adding cell to notebook ${notebookId}`);
     // Call API to add a cell to the database using the UUID format
     fetch(`/api/notebooks/${notebookId}/add-cell/`, {
         method: 'POST',
@@ -164,7 +235,6 @@ function addNewCell() {
         return response.json();
     })
     .then(data => {
-        console.log('Cell added successfully:', data);
         if (data.success) {
             // Remove any placeholder empty state
             const emptyNotebook = document.querySelector('.empty-notebook');
@@ -175,6 +245,7 @@ function addNewCell() {
             renderCell({
                 id: data.cell_id,
                 order: data.order,
+                name: data.name || 'Untitled Cell',  // Include the name from the API response
                 query: "-- Write your SQL here",
                 result: null,
                 is_executed: false
@@ -194,7 +265,6 @@ function addNewCell() {
  * Render a cell in the notebook
  */
 function renderCell(cellData) {
-    console.log('Rendering cell:', cellData);
     const cellElement = document.createElement('div');
     cellElement.className = 'sql-cell';
     cellElement.dataset.cellId = cellData.id;
@@ -203,6 +273,7 @@ function renderCell(cellData) {
     const cellHtml = `
         <div class="cell-toolbar">
             <div class="cell-order">[${cellData.order}]</div>
+            <div class="cell-name" data-cell-id="${cellData.id}" title="Double-click to edit">${cellData.name || 'Untitled Cell'}</div>
             <div class="cell-buttons">
                 <button class="run-cell-btn" title="Run Cell"><i class="fas fa-play"></i></button>
                 <button class="move-up-btn" title="Move Up"><i class="fas fa-arrow-up"></i></button>
@@ -217,7 +288,6 @@ function renderCell(cellData) {
                 ${cellData.execution_time ? `<span class="exec-time">(${cellData.execution_time.toFixed(2)}s)</span>` : ''}
             </div>
             <div class="result-content" id="result-${cellData.id}">
-                <!-- Results no longer loaded from database for privacy reasons -->
                 <div class="empty-result">Execute the query to see results</div>
             </div>
         </div>
@@ -242,11 +312,15 @@ function renderCell(cellData) {
     // Add event listeners
     addCellEventListeners(cellElement, cellData.id);
     
-    // Add to cells array
+    // Set up cell name editing
+    initCellNameEditing(cellElement.querySelector('.cell-name'));
+    
+    // Store cell in memory
     cells.push({
         id: cellData.id,
+        order: cellData.order,
         element: cellElement,
-        order: cellData.order
+        name: cellData.name || 'Untitled Cell'
     });
 }
 

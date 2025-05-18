@@ -31,6 +31,7 @@ urlpatterns += [
     path('api/notebooks/<uuid:notebook_uuid>/save/', views.api_save_notebook, name='api_save_notebook'), 
     path('api/notebooks/<uuid:notebook_uuid>/update-title/', views.api_update_notebook_title, name='api_update_notebook_title'),
     path('api/cells/<int:cell_id>/update/', views.api_update_cell, name='api_update_cell'),
+    path('api/cells/<int:cell_id>/update-name/', views.api_update_cell_name, name='api_update_cell_name'),
     path('api/cells/<int:cell_id>/execute/', views.api_execute_cell, name='api_execute_cell'),
     path('api/cells/<int:cell_id>/delete/', views.api_delete_cell, name='api_delete_cell'),
 ]

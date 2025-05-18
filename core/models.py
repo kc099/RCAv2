@@ -283,6 +283,7 @@ class SQLCell(models.Model):
         related_name='cells'
     )
     order = models.IntegerField()  # For ordering cells in the notebook
+    name = models.CharField(max_length=255, default="Untitled Cell")
     query = models.TextField(blank=True)
     result = models.JSONField(null=True, blank=True)  # Store execution results
     is_executed = models.BooleanField(default=False)
@@ -294,4 +295,4 @@ class SQLCell(models.Model):
         ordering = ['order']
         
     def __str__(self):
-        return f"Cell {self.order} in {self.notebook.title}"
+        return f"{self.name} ({self.order})"

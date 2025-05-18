@@ -78,6 +78,35 @@
     font-family: monospace;
     color: #6c757d;
     font-size: 0.875rem;
+    margin-right: 10px;
+}
+
+.cell-name {
+    font-size: 0.9rem;
+    color: #495057;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    margin-right: auto;
+    text-align: left;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: background-color 0.2s, border-color 0.2s;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 300px;
+    flex-grow: 1;
+}
+
+.cell-name:hover {
+    background-color: #f1f3f5;
+}
+
+.cell-name.editing {
+    background-color: white;
+    border-color: #ced4da;
+    cursor: text;
+    outline: none;
 }
 
 .cell-buttons {

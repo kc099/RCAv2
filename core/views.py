@@ -540,6 +540,7 @@ def open_notebook(request, notebook_uuid):
         cells_data.append({
             'id': cell.id,
             'order': cell.order,
+            'name': cell.name,  # Include the cell name
             'query': cell.query,
             'result': cell.result,
             'is_executed': cell.is_executed,
@@ -571,18 +572,20 @@ def api_add_cell(request, notebook_uuid):
         max_order = SQLCell.objects.filter(notebook=notebook).aggregate(models.Max('order'))['order__max'] or 0
         new_order = max_order + 1
             
-        # Create the new cell
+        # Create the new cell with default name
         cell = SQLCell.objects.create(
             notebook=notebook,
             order=new_order,
+            name="Untitled Cell",  # Explicitly set the default name
             query="-- Write your SQL here"
         )
             
-        # Return the new cell's ID and other info
+        # Return the new cell's ID, name, and other info
         return JsonResponse({
             'success': True,
             'cell_id': cell.id,
-            'order': new_order
+            'order': new_order,
+            'name': cell.name  # Include the name in the response
         })
     except Exception as e:
         return JsonResponse({
@@ -684,6 +687,37 @@ def api_execute_cell(request, cell_id):
         
     except Exception as e:
         # print(f"Query execution error: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+@login_required(login_url='/login/')
+def api_update_cell_name(request, cell_id):
+    """Update a cell's name"""
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Invalid request method'})
+    
+    try:
+        cell = get_object_or_404(SQLCell, id=cell_id, notebook__user=request.user)
+        
+        # Get name from request data
+        name = request.POST.get('name', '').strip()
+        if not name:
+            name = 'Untitled Cell'
+            
+        # Update the cell's name
+        cell.name = name
+        cell.save(update_fields=['name'])
+        
+        # Update the notebook's last_modified time
+        cell.notebook.save()
+        
+        return JsonResponse({
+            'success': True,
+            'name': name
+        })
+    except Exception as e:
         return JsonResponse({
             'success': False,
             'error': str(e)
