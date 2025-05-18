@@ -62,6 +62,75 @@ def execute_mysql_query(connection_info, query):
     except mysql.connector.Error as err:
         raise Exception(f"MySQL Error: {err}")
 
+def get_mysql_schema_info(connection_info):
+    """Get schema, tables, and column information from MySQL database"""
+    try:
+        conn = mysql.connector.connect(
+            host=connection_info.get('host'),
+            port=connection_info.get('port'),
+            database=connection_info.get('database'),
+            user=connection_info.get('username'),
+            password=connection_info.get('password')
+        )
+        
+        cursor = conn.cursor(dictionary=True)
+        schemas = []
+        
+        # Get all tables in the current database
+        current_db = connection_info.get('database')
+        if current_db:
+            cursor.execute(
+                """SELECT table_schema AS 'schema', 
+                          table_name AS 'name', 
+                          table_rows AS 'rows',
+                          CASE WHEN table_type = 'BASE TABLE' THEN 'table' 
+                               WHEN table_type = 'VIEW' THEN 'view' 
+                               ELSE table_type END AS 'type'
+                   FROM information_schema.tables 
+                   WHERE table_schema = %s 
+                   ORDER BY table_name""", 
+                (current_db,)
+            )
+            tables = cursor.fetchall()
+            
+            # Get table and column information
+            schema_data = {
+                'name': current_db,
+                'tables': []
+            }
+            
+            for table in tables:
+                # Get column information for each table
+                cursor.execute(
+                    """SELECT column_name AS 'name', 
+                              data_type AS 'type',
+                              column_key AS 'key',
+                              is_nullable AS 'nullable'
+                       FROM information_schema.columns 
+                       WHERE table_schema = %s AND table_name = %s 
+                       ORDER BY ordinal_position""", 
+                    (current_db, table['name'])
+                )
+                columns = cursor.fetchall()
+                
+                # Add table with its columns to the schema
+                schema_data['tables'].append({
+                    'name': table['name'],
+                    'type': table['type'],
+                    'rows': table['rows'] or 0,
+                    'columns': columns
+                })
+            
+            schemas.append(schema_data)
+        
+        cursor.close()
+        conn.close()
+        
+        return schemas
+        
+    except mysql.connector.Error as err:
+        raise Exception(f"MySQL Error: {err}")
+
 def execute_redshift_query(connection_info, query):
     """Execute query in Redshift database (placeholder function)"""
     # This is a placeholder function until proper Redshift implementation is added

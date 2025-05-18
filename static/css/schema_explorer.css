@@ -1,0 +1,114 @@
+/* Schema Explorer CSS */
+
+/* Loading indicator */
+.loading-indicator {
+    padding: 10px;
+    color: #777;
+    text-align: center;
+    font-style: italic;
+}
+
+/* No schemas/tables message */
+.no-schemas, 
+.no-tables, 
+.no-temp-tables,
+.no-columns {
+    padding: 10px;
+    color: #777;
+    font-style: italic;
+}
+
+/* Error message */
+.schema-error {
+    padding: 10px;
+    color: #d9534f;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.schema-error i {
+    color: #d9534f;
+}
+
+/* Table columns */
+.table-columns {
+    margin-left: 20px;
+    border-left: 1px dashed #ccc;
+    padding-left: 5px;
+    font-size: 0.9em;
+}
+
+.column-item {
+    padding: 4px 8px;
+    display: flex;
+    align-items: center;
+    color: #555;
+}
+
+.column-name {
+    font-weight: 500;
+    margin-right: 8px;
+}
+
+.column-type {
+    color: #777;
+    font-size: 0.9em;
+}
+
+/* Column key icons */
+.primary-key {
+    color: #ffc107;
+    margin-right: 5px;
+}
+
+.unique-key {
+    color: #17a2b8;
+    margin-right: 5px;
+}
+
+.foreign-key {
+    color: #6c757d;
+    margin-right: 5px;
+}
+
+/* Enhance table item hover effect */
+.table-item {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.table-item:hover {
+    background-color: rgba(0, 123, 255, 0.1);
+}
+
+/* Row count styling */
+.row-count {
+    font-size: 0.8em;
+    color: #6c757d;
+    margin-left: 5px;
+}
+
+/* Make schema sections more compact */
+.schema-header {
+    padding: 8px 10px;
+}
+
+.schema-tables .table-item {
+    padding: 6px 10px 6px 15px;
+}
+
+/* Better visibility for expanded/collapsed states */
+.schema-header i.fa-chevron-down,
+.schema-header i.fa-chevron-right,
+.section-header i.fa-chevron-down,
+.section-header i.fa-chevron-right {
+    transition: transform 0.2s;
+    width: 14px;
+    text-align: center;
+}
+
+.schema-header:hover,
+.section-header:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}

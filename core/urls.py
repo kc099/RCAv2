@@ -34,4 +34,6 @@ urlpatterns += [
     path('api/cells/<int:cell_id>/update-name/', views.api_update_cell_name, name='api_update_cell_name'),
     path('api/cells/<int:cell_id>/execute/', views.api_execute_cell, name='api_execute_cell'),
     path('api/cells/<int:cell_id>/delete/', views.api_delete_cell, name='api_delete_cell'),
+    path('api/notebooks/<uuid:notebook_uuid>/schema/', views.api_get_database_schema, name='api_get_database_schema'),
+    path('api/database-schema/', views.api_get_database_schema, name='api_get_database_schema_no_notebook'),
 ]

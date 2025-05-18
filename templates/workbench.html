@@ -34,27 +34,8 @@
                     <span>DATABASE SCHEMAS</span>
                 </div>
                 <div class="section-content visible" id="database-schemas">
-                    <div class="schema expanded">
-                        <div class="schema-header">
-                            <i class="fas fa-database"></i>
-                            <span>public</span>
-                            <i class="fas fa-chevron-down"></i>
-                        </div>
-                        <div class="schema-tables visible">
-                            <div class="table-item">
-                                <i class="fas fa-table"></i>
-                                <span>customers</span>
-                            </div>
-                            <div class="table-item">
-                                <i class="fas fa-table"></i>
-                                <span>orders</span>
-                            </div>
-                            <div class="table-item">
-                                <i class="fas fa-table"></i>
-                                <span>products</span>
-                            </div>
-                        </div>
-                    </div>
+                    <!-- Schema content will be populated dynamically -->
+                    <div class="loading-indicator">Loading schemas...</div>
                 </div>
             </div>
             
@@ -64,16 +45,8 @@
                     <span>TEMPORARY TABLES</span>
                 </div>
                 <div class="section-content" id="temporary-tables">
-                    <div class="table-item temp-table">
-                        <i class="fas fa-clock"></i>
-                        <span>temp_customers</span>
-                        <span class="row-count">(1243 rows)</span>
-                    </div>
-                    <div class="table-item temp-table">
-                        <i class="fas fa-clock"></i>
-                        <span>temp_recent_orders</span>
-                        <span class="row-count">(156 rows)</span>
-                    </div>
+                    <!-- Temp tables will be populated dynamically when available -->
+                    <div class="no-temp-tables">No temporary tables available</div>
                 </div>
             </div>
         </aside>
@@ -368,9 +341,11 @@
 
 <!-- Include the notebook.js script -->
 <script src="{% static 'js/notebook.js' %}"></script>
+<script src="{% static 'js/schema_explorer.js' %}"></script>
 {% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/workbench.css' %}">
 <link rel="stylesheet" href="{% static 'css/notebook.css' %}">
+<link rel="stylesheet" href="{% static 'css/schema_explorer.css' %}">
 {% endblock %}

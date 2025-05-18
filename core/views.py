@@ -11,7 +11,7 @@ import json
 import datetime
 from .models import SQLNotebook, SQLCell, DatabaseConnection
 import mysql.connector
-from .db_handlers import execute_mysql_query, execute_redshift_query
+from .db_handlers import execute_mysql_query, execute_redshift_query, get_mysql_schema_info
 
 # DateTimeEncoder has been removed as we now handle datetime serialization at the database level
 
@@ -814,17 +814,67 @@ def api_update_notebook_title(request, notebook_uuid):
         
         return JsonResponse({'success': True, 'title': title})
     except Exception as e:
-        return JsonResponse({'success': False, 'error': str(e)})
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
 
 # Helper function to execute SQL queries
 def execute_sql_query(connection_info, query):
-    """Execute SQL query based on connection type"""
-    conn_type = connection_info.get('type')
+    """Execute SQL query based on database type"""
+    connection_type = connection_info.get('type', '').lower()
     
-    if conn_type == 'mysql':
+    if connection_type == 'mysql':
         return execute_mysql_query(connection_info, query)
-    elif conn_type == 'redshift':
+    elif connection_type == 'redshift':
         return execute_redshift_query(connection_info, query)
-    # Add more database types as needed
     else:
-        raise ValueError(f"Unsupported database type: {conn_type}")
+        # Default to MySQL for now
+        return execute_mysql_query(connection_info, query)
+        
+# Helper function to get database schema
+def get_database_schema(connection_info):
+    """Fetch schema based on database type"""
+    connection_type = connection_info.get('type', '').lower()
+    
+    if connection_type == 'mysql':
+        return get_mysql_schema_info(connection_info)
+    elif connection_type == 'redshift':
+        # TODO: Implement Redshift schema retrieval
+        raise Exception("Redshift schema retrieval not yet implemented.")
+    else:
+        # Default to MySQL for now
+        return get_mysql_schema_info(connection_info)
+        
+@login_required(login_url='/login/')
+def api_get_database_schema(request, notebook_uuid=None):
+    """API endpoint to get database schema information"""
+    try:
+        # Get connection info from the notebook if provided
+        connection_info = None
+        if notebook_uuid:
+            notebook = get_object_or_404(SQLNotebook, uuid=notebook_uuid, user=request.user)
+            connection_info = notebook.get_connection_info()
+        
+        # If no notebook provided, try to get connection from session
+        if not connection_info:
+            connection_info = request.session.get('db_connection')
+            
+        if not connection_info:
+            return JsonResponse({
+                'success': False,
+                'error': 'No database connection available'
+            })
+            
+        # Get the database schema
+        schemas = get_database_schema(connection_info)
+        
+        return JsonResponse({
+            'success': True,
+            'schemas': schemas
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
