@@ -184,8 +184,6 @@ def validate_connection(request):
                 'password': password  # This will be securely stored in the session
             }
             
-            print(f"Saving connection to session with host: {host}, database: {database}")
-            
             request.session['db_connection'] = connection_config
             request.session['db_connection_id'] = connection.id
             request.session.modified = True

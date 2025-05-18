@@ -1,4 +1,3 @@
-Oauth Features added but google cloud creds setup pending.
 
 Security Features:
 Encrypted user passwords.
@@ -8,9 +7,10 @@ To do:
 Encrypt all user db details including database name and username etc.
 Encrypt the password even before sending to database.
 move .env to aws secrets during production.
+create new notebook whenever a source is connected. 
 
 Notsure:
-settings doesnot have ENCRYPTION_KEY, not sure how encryption.py works.
+better ways to create encryption keys and secure keys in django.
 login seems to be active for a long time after first login. in the same browser ip or all ips? Not checked.
 
 

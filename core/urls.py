@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import views_oauth
 
 app_name = 'core'
 
@@ -26,6 +27,10 @@ urlpatterns += [
     path('connections/<int:connection_id>/', views.edit_connection, name='edit_connection'),
     path('connections/<int:connection_id>/delete/', views.delete_connection, name='delete_connection'),
     
+    # OAuth related routes are handled by django-allauth
+]
+
+urlpatterns += [
     # API endpoints
     path('api/notebooks/<uuid:notebook_uuid>/add-cell/', views.api_add_cell, name='api_add_cell'),
     path('api/notebooks/<uuid:notebook_uuid>/save/', views.api_save_notebook, name='api_save_notebook'), 

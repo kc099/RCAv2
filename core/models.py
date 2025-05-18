@@ -20,6 +20,18 @@ class UserManager(BaseUserManager):
             raise ValueError('User must have an email address')
         if not name:
             raise ValueError('User must have a name')
+            
+        # Generate username from email if not provided
+        if 'username' not in extra_fields or not extra_fields['username']:
+            username = email.split('@')[0]  # Use the part before @ as username
+            # Make sure username is unique
+            base_username = username
+            counter = 1
+            while self.model.objects.filter(username=username).exists():
+                username = f"{base_username}{counter}"
+                counter += 1
+            extra_fields['username'] = username
+            
         user = self.model(email=self.normalize_email(email), name=name, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
@@ -39,6 +51,7 @@ class UserManager(BaseUserManager):
 class User(AbstractBaseUser, PermissionsMixin):
     """User in system"""
     email = models.EmailField(max_length=255, unique=True)
+    username = models.CharField(max_length=255, unique=True, null=True)
     # Keep name for backward compatibility
     name = models.CharField(max_length=255)
     # Add new fields based on sample data

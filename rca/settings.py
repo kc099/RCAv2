@@ -184,13 +184,25 @@ SOCIALACCOUNT_PROVIDERS = {
 # Skip the intermediate social account login confirmation screen
 SOCIALACCOUNT_LOGIN_ON_GET = True
 
-# Updated django-allauth settings (replacing deprecated settings)
+# Login/logout redirect settings
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
+
+# Social auth settings
+SOCIALACCOUNT_STORE_TOKENS = True  # Store social auth tokens
+SOCIALACCOUNT_AUTO_SIGNUP = True  # Auto-signup when using social accounts
+SOCIALACCOUNT_EMAIL_VERIFICATION = 'none'  # Don't require email verification for social accounts
 
 # New settings replacing deprecated ones
 ACCOUNT_LOGIN_METHODS = {'email'}
 ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
+
+# Custom social account adapter for merging accounts
+SOCIALACCOUNT_ADAPTER = 'core.oauth_handlers.MergingSocialAccountAdapter'
+
+# Allauth general settings
+ACCOUNT_UNIQUE_EMAIL = True
+ACCOUNT_EMAIL_VERIFICATION = 'optional'
 
 # Silence MariaDB constraint warnings
 SILENCED_SYSTEM_CHECKS = ['models.W036']
