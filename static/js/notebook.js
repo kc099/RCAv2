@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', function() {
 let notebookId = null;
 let cells = [];
 let editors = {};
+let autoSaveInterval = null; // Track auto-save interval
 
 /**
  * Initialize the SQL notebook
@@ -52,8 +53,11 @@ function initNotebook() {
         }
     }
     
-    // Add auto-save functionality
-    setInterval(autoSaveNotebook, 30000); // Save every 30 seconds
+    // Add auto-save functionality if not already set
+    if (!autoSaveInterval) {
+        autoSaveInterval = setInterval(autoSaveNotebook, 300000); // Save every 5 minutes
+        console.log('Auto-save initialized with 5-minute interval');
+    }
 }
 
 /**
@@ -207,13 +211,14 @@ function renderCell(cellData) {
             </div>
         </div>
         <textarea class="cell-editor-textarea" id="editor-${cellData.id}">${cellData.query || '-- Write your SQL here'}</textarea>
-        <div class="cell-result ${cellData.is_executed ? '' : 'hidden'}">
+        <div class="cell-result hidden">
             <div class="result-header">
                 <span>Result</span>
                 ${cellData.execution_time ? `<span class="exec-time">(${cellData.execution_time.toFixed(2)}s)</span>` : ''}
             </div>
             <div class="result-content" id="result-${cellData.id}">
-                ${formatResult(cellData.result)}
+                <!-- Results no longer loaded from database for privacy reasons -->
+                <div class="empty-result">Execute the query to see results</div>
             </div>
         </div>
     `;
@@ -646,7 +651,7 @@ function saveNotebook() {
         },
         body: JSON.stringify({
             title: title,
-            cells: cellData
+            cells: cellsData // Fixed variable name from cellData to cellsData
         })
     })
     .then(response => {

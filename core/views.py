@@ -659,9 +659,10 @@ def api_execute_cell(request, cell_id):
         # print(result)
         execution_time = time.time() - start_time
         
-        # Update cell with results
+        # Update cell metadata but don't save query results (for privacy)
         cell.query = query
-        cell.result = result
+        # cell.result = result  # No longer storing results for privacy reasons
+        cell.result = None  # Explicitly set to None instead of storing results
         cell.is_executed = True
         cell.execution_time = execution_time
         cell.save()
