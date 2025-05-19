@@ -56,7 +56,6 @@ function initNotebook() {
     // Add auto-save functionality if not already set
     if (!autoSaveInterval) {
         autoSaveInterval = setInterval(autoSaveNotebook, 300000); // Save every 5 minutes
-        console.log('Auto-save initialized with 5-minute interval');
     }
 }
 

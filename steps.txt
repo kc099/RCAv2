@@ -8,6 +8,8 @@ Encrypt all user db details including database name and username etc.
 Encrypt the password even before sending to database.
 move .env to aws secrets during production.
 create new notebook whenever a source is connected. 
+excel and csv to sql uploads
+export results to dashboard view.
 
 Notsure:
 better ways to create encryption keys and secure keys in django.
@@ -16,3 +18,10 @@ login seems to be active for a long time after first login. in the same browser 
 
 Features:
 Notebook and cell, creation and execution with models and api routes.
+
+
+Important:
+During Deployment, change the update_google_auth.sh script to update the redirect uri to the production uri.
+In your Django application:
+When you deploy to production, update the Site model with your domain:
+python manage.py shell -c "from django.contrib.sites.models import Site; site = Site.objects.get(id=1); site.domain = 'your-production-domain.com'; site.save()"

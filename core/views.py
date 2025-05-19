@@ -248,32 +248,35 @@ def workbench(request):
     if not db_connection:
         return redirect('core:data_connection_hub')
     
-    # Check if user has any notebooks, if not create one
-    notebooks = SQLNotebook.objects.filter(user=request.user)
+    # Always create a new notebook when connecting to a data source
+    # Get the database connection object if available
+    database_connection = None
+    if db_connection_id:
+        database_connection = DatabaseConnection.objects.filter(id=db_connection_id, user=request.user).first()
     
-    if notebooks.exists():
-        # Use the most recently modified notebook
-        notebook = notebooks.order_by('-last_modified').first()
-    else:
-        # Get the database connection object if available
-        database_connection = None
-        if db_connection_id:
-            database_connection = DatabaseConnection.objects.filter(id=db_connection_id, user=request.user).first()
-        
-        # Create a new notebook with the current connection
-        notebook = SQLNotebook.objects.create(
-            title="Untitled Notebook",
-            description="",
-            user=request.user,
-            database_connection=database_connection,
-            connection_info=db_connection if not database_connection else None
-        )
-        # Create initial cell
-        SQLCell.objects.create(
-            notebook=notebook,
-            order=1,
-            query="-- Write your SQL here\nSELECT 1;"
-        )
+    # Get connection details for the notebook title
+    connection_name = "Database"
+    if database_connection:
+        connection_name = database_connection.name
+    elif db_connection and 'database' in db_connection:
+        connection_name = db_connection['database']
+    
+    # Create a new notebook with a title based on the connection
+    current_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M')
+    notebook = SQLNotebook.objects.create(
+        title=f"New {connection_name} Notebook - {current_time}",
+        description="Created from Data Connection Hub",
+        user=request.user,
+        database_connection=database_connection,
+        connection_info=db_connection if not database_connection else None
+    )
+    
+    # Create initial cell
+    SQLCell.objects.create(
+        notebook=notebook,
+        order=1,
+        query="-- Write your SQL here\nSELECT 1;"
+    )
     
     # Load the cells for this notebook and convert to serializable format
     cells_queryset = notebook.cells.all().order_by('order')
