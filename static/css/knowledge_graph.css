@@ -1,0 +1,339 @@
+/* 
+ * Knowledge Graph Visualization Styles
+ */
+
+/* Results tab layout */
+.results-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    padding: 0;
+    overflow: hidden;
+}
+
+.query-results-section {
+    flex: 0 0 auto;
+    padding: 15px;
+    border-bottom: 1px solid #e0e0e0;
+    max-height: 30%;
+    overflow: auto;
+}
+
+/* Hide results section when there are no results */
+.query-results-section:empty,
+.query-results-section:has(.results-placeholder) {
+    padding: 0;
+    height: 0;
+    border: none;
+}
+
+.knowledge-graph-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    width: 100%;
+}
+
+/* Header with controls */
+.knowledge-graph-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px;
+    background-color: #f5f5f5;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.knowledge-graph-title {
+    font-size: 18px;
+    font-weight: 500;
+    color: #333;
+}
+
+.knowledge-graph-controls {
+    display: flex;
+    gap: 15px;
+    align-items: center;
+}
+
+#generate-knowledge-graph {
+    background-color: #2196F3;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background-color 0.2s;
+}
+
+#generate-knowledge-graph:hover {
+    background-color: #1976D2;
+}
+
+#generate-knowledge-graph:disabled {
+    background-color: #90CAF9;
+    cursor: not-allowed;
+}
+
+#generate-knowledge-graph i {
+    font-size: 16px;
+}
+
+.graph-layout-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.graph-layout-control label {
+    font-size: 14px;
+    color: #555;
+}
+
+#graph-layout-select {
+    padding: 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+    background-color: white;
+}
+
+.graph-search {
+    position: relative;
+    width: 250px;
+}
+
+.graph-search input {
+    width: 100%;
+    padding: 8px 30px 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.graph-search input:focus {
+    border-color: #2196F3;
+    outline: none;
+}
+
+.graph-search-clear {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    cursor: pointer;
+    color: #999;
+    background: none;
+    border: none;
+    font-size: 14px;
+}
+
+.graph-search-clear:hover {
+    color: #666;
+}
+
+/* Message display */
+#graph-message {
+    margin: 0;
+    padding: 10px 15px;
+    background-color: #E3F2FD;
+    color: #0D47A1;
+    border-bottom: 1px solid #BBDEFB;
+    display: none;
+}
+
+/* Main content area with network and sidebar */
+.knowledge-graph-content {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+    min-height: 400px;
+    height: calc(100% - 60px); /* Account for header */
+}
+
+/* Network visualization container */
+#knowledge-graph-network {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    border-right: 1px solid #e0e0e0;
+}
+
+/* Info sidebar */
+.knowledge-graph-sidebar {
+    width: 300px;
+    background-color: #f9f9f9;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid #e0e0e0;
+}
+
+/* Stats panel */
+.graph-stats {
+    display: flex;
+    padding: 15px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.stat-item {
+    flex: 1;
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: 500;
+    color: #2196F3;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: #666;
+    margin-top: 5px;
+}
+
+/* Node info panel */
+.graph-node-info {
+    padding: 15px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.graph-node-info h4 {
+    margin: 0 0 10px 0;
+    font-size: 16px;
+    color: #333;
+}
+
+.graph-node-info-content {
+    font-size: 14px;
+    color: #666;
+}
+
+.graph-node-info-content p {
+    margin: 5px 0;
+}
+
+/* Legend */
+.graph-legend {
+    padding: 15px;
+}
+
+.graph-legend h4 {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+    color: #333;
+}
+
+.legend-section {
+    margin-bottom: 15px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.legend-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.legend-line {
+    width: 30px;
+    border-top-width: 2px;
+    display: inline-block;
+    margin-right: 8px;
+}
+
+.legend-label {
+    font-size: 13px;
+    color: #555;
+}
+
+/* Loading states */
+.knowledge-graph-loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+}
+
+.knowledge-graph-loading .spinner {
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 10px;
+    border: 4px solid rgba(33, 150, 243, 0.2);
+    border-top-color: #2196F3;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.knowledge-graph-loading p {
+    color: #666;
+    font-size: 14px;
+}
+
+/* Error state */
+.knowledge-graph-error {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: #D32F2F;
+    padding: 20px;
+    max-width: 400px;
+}
+
+.knowledge-graph-error i {
+    font-size: 36px;
+    margin-bottom: 10px;
+}
+
+.knowledge-graph-error p {
+    margin: 0;
+    font-size: 14px;
+}
+
+/* Empty state placeholder */
+.knowledge-graph-placeholder {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: #757575;
+    padding: 20px;
+    max-width: 400px;
+}
+
+.knowledge-graph-placeholder i {
+    font-size: 48px;
+    margin-bottom: 15px;
+    color: #BDBDBD;
+}
+
+.knowledge-graph-placeholder h3 {
+    margin: 0 0 10px 0;
+    font-size: 18px;
+    color: #616161;
+}
+
+.knowledge-graph-placeholder p {
+    margin: 0 0 10px 0;
+    font-size: 14px;
+}

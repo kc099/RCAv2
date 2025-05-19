@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from . import views_oauth
+from . import views_graph
 
 app_name = 'core'
 
@@ -41,4 +42,8 @@ urlpatterns += [
     path('api/cells/<int:cell_id>/delete/', views.api_delete_cell, name='api_delete_cell'),
     path('api/notebooks/<uuid:notebook_uuid>/schema/', views.api_get_database_schema, name='api_get_database_schema'),
     path('api/database-schema/', views.api_get_database_schema, name='api_get_database_schema_no_notebook'),
+    
+    # Knowledge Graph endpoints
+    path('api/notebooks/<uuid:notebook_uuid>/knowledge-graph/generate/', views_graph.generate_knowledge_graph, name='generate_knowledge_graph'),
+    path('api/notebooks/<uuid:notebook_uuid>/knowledge-graph/', views_graph.get_knowledge_graph, name='get_knowledge_graph'),
 ]

@@ -309,3 +309,23 @@ class SQLCell(models.Model):
         
     def __str__(self):
         return f"{self.name} ({self.order})"
+
+
+class KnowledgeGraph(models.Model):
+    """Model for storing database schema knowledge graph"""
+    notebook = models.ForeignKey(SQLNotebook, on_delete=models.CASCADE, related_name='knowledge_graphs')
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='knowledge_graphs')
+    graph_data = models.JSONField()  # Store graph data as JSON
+    table_count = models.IntegerField(default=0)  # Number of tables in the graph
+    column_count = models.IntegerField(default=0)  # Number of columns across all tables
+    relation_count = models.IntegerField(default=0)  # Number of detected relationships
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = "Knowledge Graph"
+        verbose_name_plural = "Knowledge Graphs"
+    
+    def __str__(self):
+        return f"Knowledge Graph for {self.notebook.title}"

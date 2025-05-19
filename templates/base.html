@@ -6,14 +6,20 @@
     <title>{% block title %}Datasage{% endblock %}</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/vis-network@9.1.2/dist/dist/vis-network.min.css">
     {% load static %}
     <link rel="stylesheet" href="{% static 'css/main.css' %}">
+    <link rel="stylesheet" href="{% static 'css/knowledge_graph.css' %}">
     {% block extra_css %}{% endblock %}
 </head>
 <body>
     <div class="container">
         {% block content %}{% endblock %}
     </div>
+    
+    <!-- Vis.js Network for Knowledge Graph -->
+    <script src="https://unpkg.com/vis-network@9.1.2/dist/vis-network.min.js"></script>
+    <script src="{% static 'js/knowledge_graph.js' %}"></script>
     
     {% block scripts %}{% endblock %}
 </body>
