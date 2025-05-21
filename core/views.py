@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_POST
 from django.urls import reverse
 from django.http import HttpResponse, JsonResponse
 from django.conf import settings
@@ -873,6 +874,96 @@ def api_get_database_schema(request, notebook_uuid=None):
         return JsonResponse({
             'success': True,
             'schemas': schemas
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+
+@require_POST
+@login_required
+def api_dashboard_save(request):
+    """API endpoint to save data for dashboard visualization"""
+    try:
+        # Get data from request
+        data = json.loads(request.body)
+        
+        # Validate data has required fields
+        if not isinstance(data.get('rows'), list) or not data.get('rows'):
+            return JsonResponse({
+                'success': False,
+                'error': 'Invalid data format: rows must be a non-empty list'
+            })
+            
+        if not isinstance(data.get('columns'), list) or not data.get('columns'):
+            # Try to extract columns from first row if not provided
+            if data.get('rows') and isinstance(data.get('rows')[0], dict):
+                data['columns'] = list(data['rows'][0].keys())
+            else:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Invalid data format: columns must be a non-empty list'
+                })
+        
+        # Store data in session for simplicity
+        # In a production app, consider storing in database with user reference
+        request.session['dashboard_data'] = data
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Data saved successfully',
+            'data': data
+        })
+    except json.JSONDecodeError:
+        return JsonResponse({
+            'success': False,
+            'error': 'Invalid JSON data'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+
+@login_required
+def api_dashboard_data(request):
+    """API endpoint to get saved dashboard data"""
+    try:
+        # Get data from session
+        dashboard_data = request.session.get('dashboard_data')
+        
+        if not dashboard_data:
+            return JsonResponse({
+                'success': True,
+                'data': None
+            })
+            
+        return JsonResponse({
+            'success': True,
+            'data': dashboard_data
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
+
+
+@require_POST
+@login_required
+def api_dashboard_clear(request):
+    """API endpoint to clear dashboard data"""
+    try:
+        # Remove dashboard data from session
+        if 'dashboard_data' in request.session:
+            del request.session['dashboard_data']
+            
+        return JsonResponse({
+            'success': True,
+            'message': 'Dashboard data cleared successfully'
         })
     except Exception as e:
         return JsonResponse({

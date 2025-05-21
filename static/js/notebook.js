@@ -5,10 +5,11 @@ document.addEventListener('DOMContentLoaded', function() {
     initNotebook();
 });
 
-// Global variables
-let notebookId = null;
-let cells = [];
-let editors = {};
+// Global variables for tracking cells and editors
+const cells = [];
+const editors = {};
+const cellResults = {}; // Store cell execution results
+let pendingImport = null; // Track pending imports
 let autoSaveInterval = null; // Track auto-save interval
 
 /**
@@ -275,8 +276,7 @@ function renderCell(cellData) {
             <div class="cell-name" data-cell-id="${cellData.id}" title="Double-click to edit">${cellData.name || 'Untitled Cell'}</div>
             <div class="cell-buttons">
                 <button class="run-cell-btn" title="Run Cell"><i class="fas fa-play"></i></button>
-                <button class="move-up-btn" title="Move Up"><i class="fas fa-arrow-up"></i></button>
-                <button class="move-down-btn" title="Move Down"><i class="fas fa-arrow-down"></i></button>
+                <button class="import-cell-btn" title="Import to Examples"><i class="fas fa-file-import"></i></button>
                 <button class="delete-cell-btn" title="Delete Cell"><i class="fas fa-trash"></i></button>
             </div>
         </div>
@@ -400,7 +400,56 @@ function updateCellContent(cellId, content) {
 }
 
 /**
- * Format SQL result for display
+ * Process result data for export to Query Examples
+ */
+function processResultForExport(result) {
+    // Check if we have a valid result object
+    if (!result) {
+        console.error('Result is null or undefined');
+        return [];
+    }
+    
+    // Debug log to see the structure
+    // console.log('Result structure:', JSON.stringify(result, null, 2));
+    
+    // Handle different result structures
+    if (result.rows && Array.isArray(result.rows)) {
+        // The result already has a rows array of objects
+        // This is the format we need for the examples tab
+        return result.rows;
+    } else if (result.data && Array.isArray(result.data)) {
+        // Handle column-based format if present
+        if (!result.columns || !Array.isArray(result.columns)) {
+            console.error('Result has data but no columns');
+            return [];
+        }
+        
+        // Convert from column-based to row-based format
+        const data = [];
+        const rowCount = result.data[0]?.length || 0;
+        
+        for (let i = 0; i < rowCount; i++) {
+            const rowData = {};
+            
+            for (let j = 0; j < result.columns.length; j++) {
+                if (result.data[j] && i < result.data[j].length) {
+                    const columnName = result.columns[j];
+                    rowData[columnName] = result.data[j][i];
+                }
+            }
+            
+            data.push(rowData);
+        }
+        
+        return data;
+    }
+    
+    console.error('Unrecognized result format');
+    return [];
+}
+
+/**
+ * Format results for display in the cell
  */
 function formatResult(result) {
     if (!result) return '<div class="empty-result">No results to display</div>';
@@ -475,19 +524,11 @@ function addCellEventListeners(cellElement, cellId) {
         });
     }
     
-    // Move up button
-    const moveUpBtn = cellElement.querySelector('.move-up-btn');
-    if (moveUpBtn) {
-        moveUpBtn.addEventListener('click', () => {
-            moveCell(cellId, 'up');
-        });
-    }
-    
-    // Move down button
-    const moveDownBtn = cellElement.querySelector('.move-down-btn');
-    if (moveDownBtn) {
-        moveDownBtn.addEventListener('click', () => {
-            moveCell(cellId, 'down');
+    // Import button
+    const importBtn = cellElement.querySelector('.import-cell-btn');
+    if (importBtn) {
+        importBtn.addEventListener('click', () => {
+            importCellToExamples(cellId);
         });
     }
     
@@ -532,6 +573,244 @@ function adjustCellSpacing(currentCell) {
             cell.style.marginBottom = '1.5rem';
         }
     });
+}
+
+/**
+ * Export cell data to dashboard for visualization
+ */
+function importCellToExamples(cellId) {
+    console.log(`Exporting cell ${cellId} to dashboard`);
+    
+    // Get cell data
+    const cell = cells.find(cell => cell.id === cellId);
+    if (!cell) {
+        console.error(`Cell ${cellId} not found`);
+        alert('Error: Cell not found');
+        return false;
+    }
+    
+    // Get query text
+    const query = getQueryText(cellId);
+    if (!query) {
+        console.error(`No query found for cell ${cellId}`);
+        alert('Error: No SQL query found for this cell');
+        return false;
+    }
+    
+    // Get result data
+    const resultData = getResultData(cellId);
+    if (!resultData || !Array.isArray(resultData) || resultData.length === 0) {
+        console.error(`No result data found for cell ${cellId}`);
+        alert('No result data available. Please execute the query first.');
+        return false;
+    }
+    
+    // Export to dashboard
+    exportToDashboard(cellId, query, resultData);
+    return true;
+}
+
+/**
+ * Export data to the dashboard for visualization
+ */
+function exportToDashboard(cellId, query, data) {
+    try {
+        console.log(`Exporting ${data.length} rows to dashboard from cell ${cellId}`);
+        
+        // Get cell name to use as source
+        const cell = cells.find(cell => cell.id === cellId);
+        const cellName = cell ? cell.name : `Cell ${cellId}`;
+        
+        // Prepare dashboard data
+        const dashboardData = {
+            source: `${cellName} (#${cellId})`,
+            query: query,
+            rows: data,
+            columns: Object.keys(data[0] || {}),
+            timestamp: new Date().toISOString()
+        };
+        
+        // Send to server
+        fetch('/api/dashboard/save/', {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(dashboardData)
+        })
+        .then(response => response.json())
+        .then(result => {
+            if (result.success) {
+                console.log('Data exported to dashboard successfully');
+                
+                // Activate dashboard tab and load data
+                console.log('Activating dashboard tab...');
+                
+                // Direct approach: click the dashboard tab to activate it through existing event handlers
+                const dashboardTab = document.querySelector('.tab[data-tab="dashboard"]');
+                if (dashboardTab) {
+                    console.log('Dashboard tab found, clicking it');
+                    dashboardTab.click(); // This will trigger the tab's click event handler
+                    
+                    // Load the data using the dashboard.js function
+                    if (typeof window.loadDashboardData === 'function' && result.data) {
+                        console.log('Loading dashboard data...');
+                        window.loadDashboardData(result.data);
+                    } else {
+                        console.error('loadDashboardData function not available');
+                    }
+                } else {
+                    console.error('Dashboard tab not found');
+                }
+                
+                showNotification('Data exported to dashboard successfully');
+            } else {
+                console.error('Error exporting data to dashboard:', result.error);
+                alert('Error exporting data: ' + result.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error during dashboard export:', error);
+            alert(`Error exporting data: ${error.message}`);
+        });
+        
+        return true;
+    } catch (error) {
+        console.error('Error preparing dashboard data:', error);
+        alert(`Error exporting data: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Show a notification message
+ * @param {string} message - Message to display
+ * @param {string} type - Type of notification (success, error, etc.)
+ */
+function showNotification(message, type = 'success') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = 'notification';
+    notification.textContent = message;
+    
+    if (type === 'error') {
+        notification.style.backgroundColor = '#dc3545';
+    }
+    
+    // Add to body
+    document.body.appendChild(notification);
+    
+    // Trigger animation
+    setTimeout(() => {
+        notification.style.opacity = '1';
+        
+        // Remove after 3 seconds
+        setTimeout(() => {
+            notification.style.opacity = '0';
+            setTimeout(() => {
+                notification.remove();
+            }, 300);
+        }, 3000);
+    }, 10);
+}
+
+/**
+ * Get SQL query text from a cell
+ */
+function getQueryText(cellId) {
+    try {
+        // Try to get from CodeMirror editor first
+        const editorId = `editor-${cellId}`;
+        if (editors[editorId]) {
+            return editors[editorId].getValue();
+        }
+        
+        // Fallback to getting query from textarea in DOM
+        const cellElement = document.querySelector(`.sql-cell[data-cell-id="${cellId}"]`);
+        if (cellElement) {
+            const textarea = cellElement.querySelector('.cell-editor-textarea');
+            if (textarea) {
+                return textarea.value;
+            }
+        }
+        
+        // Last resort - check if we have cell results with query
+        if (cellResults[cellId] && cellResults[cellId].query) {
+            return cellResults[cellId].query;
+        }
+        
+        console.warn(`Could not find query text for cell ${cellId}`);
+        return '';
+    } catch (error) {
+        console.error(`Error getting query text for cell ${cellId}:`, error);
+        return '';
+    }
+}
+
+/**
+ * Get result data from cell
+ */
+function getResultData(cellId) {
+    try {
+        // Check if we have result data in memory
+        if (cellResults[cellId] && cellResults[cellId].data) {
+            console.log(`Using cached result data for cell ${cellId}`);
+            return cellResults[cellId].data;
+        }
+        
+        // If not in memory, try to parse from DOM
+        const resultTable = document.querySelector(`#result-${cellId} table.result-table`);
+        if (resultTable) {
+            console.log(`Parsing table data from DOM for cell ${cellId}`);
+            return parseTableData(resultTable);
+        }
+        
+        console.warn(`No result data found for cell ${cellId}`);
+        return [];
+    } catch (error) {
+        console.error(`Error getting result data for cell ${cellId}:`, error);
+        return [];
+    }
+}
+
+/**
+ * Parse HTML table data into JSON
+ */
+function parseTableData(table) {
+    const data = [];
+    const headers = [];
+    
+    // Get headers
+    const headerCells = table.querySelectorAll('thead th');
+    headerCells.forEach(cell => {
+        headers.push(cell.textContent.trim());
+    });
+    
+    // Get rows
+    const rows = table.querySelectorAll('tbody tr');
+    rows.forEach(row => {
+        const rowData = {};
+        const cells = row.querySelectorAll('td');
+        
+        cells.forEach((cell, index) => {
+            if (index < headers.length) {
+                // Try to parse numeric values
+                const value = cell.textContent.trim();
+                if (value === 'NULL') {
+                    rowData[headers[index]] = null;
+                } else if (!isNaN(value) && value !== '') {
+                    rowData[headers[index]] = Number(value);
+                } else {
+                    rowData[headers[index]] = value;
+                }
+            }
+        });
+        
+        data.push(rowData);
+    });
+    
+    return data;
 }
 
 /**
@@ -605,6 +884,23 @@ function executeCell(cellId) {
             const resultContentEl = resultElement.querySelector('.result-content');
             resultContentEl.innerHTML = formatResult(data.result);
             
+            // Process and store the cell result for potential import
+            try {
+                const processedData = processResultForExport(data.result);
+                cellResults[cellId] = {
+                    data: processedData,
+                    executionTime: data.execution_time
+                };
+                console.log(`Processed data for cell ${cellId}:`, processedData.length, 'rows');
+            } catch (error) {
+                console.error('Error processing result data:', error);
+                cellResults[cellId] = {
+                    data: [],
+                    executionTime: data.execution_time,
+                    error: error.message
+                };
+            }
+            
             // Add a toggle button for large result sets, if there are a significant number of results
             if (data.result && data.result.rows && data.result.rows.length > 10) {
                 const toggleBtn = document.createElement('button');
@@ -625,6 +921,30 @@ function executeCell(cellId) {
             if (cellIndex < totalCells - 1) {
                 setTimeout(() => {
                     cell.element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                }, 100);
+            }
+            
+            // Check if there's a pending import for this cell
+            if (pendingImport === cellId) {
+                pendingImport = null;
+                // Give a slight delay to ensure UI is updated
+                setTimeout(() => {
+                    try {
+                        // Get the query and processed result data
+                        const query = editor.getValue();
+                        const resultData = cellResults[cellId].data;
+                        
+                        // Make sure we have valid data
+                        if (resultData && Array.isArray(resultData) && resultData.length > 0) {
+                            // Import the data to examples tab
+                            importData(cellId, query, resultData);
+                        } else {
+                            console.error('No valid data to import after execution');
+                            alert('The query execution didn\'t produce importable results.');
+                        }
+                    } catch (error) {
+                        console.error('Error handling pending import:', error);
+                    }
                 }, 100);
             }
         } else {

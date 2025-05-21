@@ -50,6 +50,10 @@ INSTALLED_APPS = [
     'allauth.account',
     'allauth.socialaccount',
     'allauth.socialaccount.providers.google',
+
+    # MCP Agent
+    'mcp_agent',
+    'channels',
 ]
 
 MIDDLEWARE = [

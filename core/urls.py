@@ -46,4 +46,9 @@ urlpatterns += [
     # Knowledge Graph endpoints
     path('api/notebooks/<uuid:notebook_uuid>/knowledge-graph/generate/', views_graph.generate_knowledge_graph, name='generate_knowledge_graph'),
     path('api/notebooks/<uuid:notebook_uuid>/knowledge-graph/', views_graph.get_knowledge_graph, name='get_knowledge_graph'),
+    
+    # Dashboard visualization endpoints
+    path('api/dashboard/save/', views.api_dashboard_save, name='api_dashboard_save'),
+    path('api/dashboard/data/', views.api_dashboard_data, name='api_dashboard_data'),
+    path('api/dashboard/clear/', views.api_dashboard_clear, name='api_dashboard_clear'),
 ]

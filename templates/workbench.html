@@ -56,7 +56,7 @@
             <div class="workspace-tabs">
                 <div class="tab active" data-tab="sql-notebook">SQL Notebook</div>
                 <div class="tab" data-tab="results">Results</div>
-                <div class="tab" data-tab="query-examples">Query Examples</div>
+                <div class="tab" data-tab="dashboard">Dashboard</div>
                 <div class="tab" data-tab="documentation">Documentation</div>
             </div>
             
@@ -190,10 +190,49 @@
                     </div>
                 </div>
                 
-                <!-- Query Examples Tab -->
-                <div class="tab-pane" id="query-examples">
-                    <div class="examples-placeholder">
-                        <p>Query examples will appear here</p>
+                <!-- Dashboard Tab Content -->
+                <div class="tab-pane" id="dashboard">
+                    <div id="dashboard-container">
+                        <!-- Will be populated by dashboard.js -->
+                        <div class="dashboard-empty-state">
+                            <p>Export your query results to create visualizations here</p>
+                        </div>
+                        
+                        <div class="dashboard-data-controls" style="display: none;">
+                            <div class="visualization-form">
+                                <h3>Create Visualization</h3>
+                                
+                                <div class="form-group">
+                                    <label for="plot-type">Chart Type</label>
+                                    <select id="plot-type" class="form-control">
+                                        <option value="bar">Bar Chart</option>
+                                        <option value="line">Line Chart</option>
+                                        <option value="scatter">Scatter Plot</option>
+                                        <option value="pie">Pie Chart</option>
+                                        <option value="histogram">Histogram</option>
+                                    </select>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="x-axis">X-Axis Column</label>
+                                    <select id="x-axis" class="form-control"></select>
+                                </div>
+                                
+                                <div class="form-group y-axis-control">
+                                    <label for="y-axis">Y-Axis Column</label>
+                                    <select id="y-axis" class="form-control"></select>
+                                </div>
+                                
+                                <div class="form-group">
+                                    <label for="chart-title">Chart Title</label>
+                                    <input type="text" id="chart-title" class="form-control" placeholder="Enter chart title">
+                                </div>
+                                
+                                <button id="generate-chart" class="btn btn-primary">Generate Chart</button>
+                            </div>
+                        </div>
+                        
+                        <div id="chart-container"></div>
                     </div>
                 </div>
                 
@@ -264,6 +303,28 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+    // Global variable to track notebook status
+    window.notebookInitialized = false;
+    window.importFunctionsReady = false;
+    
+    // Debug function to check integration between scripts
+    function checkIntegration() {
+        const funcs = {
+            addQueryExample: typeof window.addQueryExample === 'function',
+            activateTab: typeof window.activateTab === 'function',
+            importCellToExamples: typeof importCellToExamples === 'function'
+        };
+        console.log('Integration check:', funcs);
+        return funcs;
+    }
+    
+    // Wait short period then check integration
+    setTimeout(checkIntegration, 1000);
+</script>
+
+<!-- Include simple-query-examples.js script -->
+<script src="{% static 'js/simple-query-examples.js' %}"></script>
 <script>
     // Function to get CSRF token for AJAX requests
     function getCsrfToken() {
@@ -428,9 +489,13 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js"></script>
 
-<!-- Include the notebook.js script -->
+<!-- Include Plotly.js for visualizations -->
+<script src="https://cdn.plot.ly/plotly-2.23.0.min.js"></script>
+
+<!-- Include the application scripts -->
 <script src="{% static 'js/notebook.js' %}"></script>
 <script src="{% static 'js/schema_explorer.js' %}"></script>
+<script src="{% static 'js/dashboard.js' %}"></script>
 {% endblock %}
 
 {% block extra_css %}
