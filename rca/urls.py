@@ -23,6 +23,7 @@ from django.conf.urls.static import static
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('accounts/', include('allauth.urls')),
+    path('mcp_agent/', include('mcp_agent.urls')),  # Agent endpoints
     path('', include('core.urls')),  # Keep core URLs last to avoid redirection issues
 ]
 

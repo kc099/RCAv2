@@ -53,7 +53,6 @@ INSTALLED_APPS = [
 
     # MCP Agent
     'mcp_agent',
-    'channels',
 ]
 
 MIDDLEWARE = [
@@ -210,3 +209,28 @@ ACCOUNT_EMAIL_VERIFICATION = 'optional'
 
 # Silence MariaDB constraint warnings
 SILENCED_SYSTEM_CHECKS = ['models.W036']
+
+# Agent configuration
+ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
+
+# Logging configuration
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'mcp_agent': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+    },
+}

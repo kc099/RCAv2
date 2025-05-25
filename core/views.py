@@ -300,8 +300,16 @@ def workbench(request):
     # Get connection info - either from database_connection or session
     connection_info = notebook.get_connection_info() if hasattr(notebook, 'get_connection_info') else db_connection
     
+    # Get the connection ID for the agent
+    connection_id = None
+    if database_connection:
+        connection_id = database_connection.id
+    elif db_connection_id:
+        connection_id = db_connection_id
+    
     context = {
         'connection': connection_info,
+        'connection_id': connection_id,
         'notebook': notebook,
         'cells': cells_json
     }
@@ -534,6 +542,8 @@ def open_notebook(request, notebook_uuid):
     # Store connection info in session, prioritizing the database_connection if available
     connection_info = notebook.get_connection_info()
     request.session['db_connection'] = connection_info
+    if notebook.database_connection:
+        request.session['db_connection_id'] = notebook.database_connection.id
     request.session.modified = True
     
     # Convert cells queryset to list of dictionaries for JSON serialization
@@ -552,10 +562,14 @@ def open_notebook(request, notebook_uuid):
     # JSON serialize the cells data for JavaScript
     cells_json = json.dumps(cells_data)
     
+    # Get the connection ID for the agent
+    connection_id = notebook.database_connection.id if notebook.database_connection else None
+    
     context = {
         'notebook': notebook,
         'cells': cells_json,
-        'connection': connection_info
+        'connection': connection_info,
+        'connection_id': connection_id
     }
     
     return render(request, 'workbench.html', context)
