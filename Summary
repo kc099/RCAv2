@@ -1,0 +1,118 @@
+This codebase is a Django-based SQL workbench and data analysis platform called Datasage. Here's a comprehensive summary:
+Core Purpose
+Datasage is a web-based SQL notebook application that allows users to connect to databases, write and execute SQL queries, visualize data, and generate knowledge graphs from database schemas.
+Architecture Overview
+Backend (Django)
+
+Framework: Django 5.2 with Python
+Database: MySQL/MariaDB with PyMySQL adapter
+Authentication: Custom user model + Django Allauth for OAuth (Google)
+Key Apps: core (main functionality), mcp_agent (mentioned but not detailed)
+
+Frontend
+
+UI Framework: Vanilla JavaScript with some Vue.js components
+Code Editor: CodeMirror for SQL editing
+Visualizations: Plotly.js for charts/dashboards
+Knowledge Graphs: Vis.js network library
+Styling: Custom CSS with modern design patterns
+
+Key Features
+1. Database Connectivity
+
+Supports MySQL, PostgreSQL, Redshift, Snowflake connections
+Encrypted credential storage using Fernet encryption
+Connection validation and management
+File uploads (CSV, Excel) for data import
+
+2. SQL Notebook Interface
+
+Cell-based execution: Similar to Jupyter notebooks but for SQL
+Real-time editing: CodeMirror-powered SQL editor with syntax highlighting
+Result display: Formatted tables with execution timing
+Auto-save: Automatic saving of notebook content
+Export capabilities: Export query results to dashboard for visualization
+
+3. Database Schema Explorer
+
+Interactive sidebar: Browse database schemas, tables, and columns
+Table metadata: Show row counts, column types, and keys
+Search functionality: Find tables and columns quickly
+Expandable tree view: Hierarchical navigation of database structure
+
+4. Knowledge Graph Generation
+
+Schema visualization: Automatic generation of database schema graphs
+Relationship detection: Identifies potential foreign key relationships
+Interactive exploration: Click nodes to see details, search functionality
+Multiple layouts: Hierarchical, force-directed, and circular layouts
+Color coding: Different colors for different data types
+
+5. Data Visualization Dashboard
+
+Chart types: Bar, line, scatter, pie charts, and histograms
+Dynamic data: Import query results directly from notebook cells
+Interactive controls: Column selection, chart customization
+Real-time generation: Instant chart creation from SQL results
+
+6. User Management
+
+Custom user model: Extended Django user with additional fields
+OAuth integration: Google sign-in with account merging
+Role-based access: Admin and normal user profiles
+Session management: Secure authentication with remember-me option
+
+Data Models
+Core Models
+
+User: Custom user model with OAuth support
+Thread: User conversation/analysis sessions
+DatabaseConnection: Encrypted database credentials
+SQLNotebook: Container for SQL queries and analysis
+SQLCell: Individual executable SQL statements
+KnowledgeGraph: Stored schema visualizations
+
+Security Features
+
+Encryption: Sensitive data (passwords, connection strings) encrypted at rest
+CSRF Protection: All forms protected against cross-site request forgery
+User isolation: All data scoped to authenticated users
+Secure sessions: Configurable session expiration
+
+Technical Highlights
+Database Operations
+
+Query execution: Safe SQL execution with result formatting
+Schema introspection: Dynamic database schema discovery
+Connection pooling: Efficient database connection management
+Error handling: Comprehensive error catching and user feedback
+
+Frontend Architecture
+
+Modular JavaScript: Separated concerns (notebook, dashboard, schema explorer)
+Global registry: Cross-script communication system
+Event-driven: Responsive UI with proper event handling
+Progressive enhancement: Works without JavaScript for basic functions
+
+API Design
+
+RESTful endpoints: Clean API for notebook operations
+JSON responses: Structured API responses
+Real-time updates: Dynamic content loading without page refresh
+File handling: Support for file uploads and processing
+
+Development Features
+
+Management commands: Custom Django commands for deployment
+Static file handling: Optimized CSS/JS serving
+Environment configuration: Docker-ready with environment variables
+Database migrations: Proper Django migration system
+
+Use Cases
+
+Data Analysts: Interactive SQL querying with visualization
+Database Administrators: Schema exploration and documentation
+Business Users: Self-service data analysis with guided interface
+Teams: Collaborative SQL notebook sharing and documentation
+
+This is a sophisticated, production-ready data analysis platform that combines the power of SQL with modern web technologies to create an intuitive, feature-rich database workbench.
