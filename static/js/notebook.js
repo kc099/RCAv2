@@ -276,6 +276,8 @@ function renderCell(cellData) {
             <div class="cell-name" data-cell-id="${cellData.id}" title="Double-click to edit">${cellData.name || 'Untitled Cell'}</div>
             <div class="cell-buttons">
                 <button class="run-cell-btn" title="Run Cell"><i class="fas fa-play"></i></button>
+                <button class="move-up-btn" title="Move Up"><i class="fas fa-arrow-up"></i></button>
+                <button class="move-down-btn" title="Move Down"><i class="fas fa-arrow-down"></i></button>
                 <button class="import-cell-btn" title="Import to Examples"><i class="fas fa-file-import"></i></button>
                 <button class="delete-cell-btn" title="Delete Cell"><i class="fas fa-trash"></i></button>
             </div>
@@ -524,6 +526,22 @@ function addCellEventListeners(cellElement, cellId) {
         });
     }
     
+    // Move up button
+    const moveUpBtn = cellElement.querySelector('.move-up-btn');
+    if (moveUpBtn) {
+        moveUpBtn.addEventListener('click', () => {
+            moveCell(cellId, 'up');
+        });
+    }
+    
+    // Move down button
+    const moveDownBtn = cellElement.querySelector('.move-down-btn');
+    if (moveDownBtn) {
+        moveDownBtn.addEventListener('click', () => {
+            moveCell(cellId, 'down');
+        });
+    }
+    
     // Import button
     const importBtn = cellElement.querySelector('.import-cell-btn');
     if (importBtn) {
@@ -686,7 +704,7 @@ function exportToDashboard(cellId, query, data) {
 /**
  * Show a notification message
  * @param {string} message - Message to display
- * @param {string} type - Type of notification (success, error, etc.)
+ * @param {string} type - Type of notification (success, error, info, etc.)
  */
 function showNotification(message, type = 'success') {
     // Create notification element
@@ -696,6 +714,8 @@ function showNotification(message, type = 'success') {
     
     if (type === 'error') {
         notification.style.backgroundColor = '#dc3545';
+    } else if (type === 'info') {
+        notification.style.backgroundColor = '#17a2b8';
     }
     
     // Add to body
@@ -966,10 +986,138 @@ function executeCell(cellId) {
  * Move a cell up or down
  */
 function moveCell(cellId, direction) {
-    // This would need a backend API to change cell order
     console.log(`Moving cell ${cellId} ${direction}`);
-    // For now, just show a message
-    alert('Cell reordering is not yet implemented');
+    
+    // Find the current cell in our in-memory array
+    const cellIndex = cells.findIndex(c => c.id === cellId);
+    if (cellIndex === -1) {
+        console.error('Cell not found in memory');
+        showNotification('Error: Cell not found', 'error');
+        return;
+    }
+    
+    // Calculate new position
+    let newIndex;
+    if (direction === 'up') {
+        if (cellIndex === 0) {
+            showNotification('Cell is already at the top', 'info');
+            return;
+        }
+        newIndex = cellIndex - 1;
+    } else {
+        if (cellIndex === cells.length - 1) {
+            showNotification('Cell is already at the bottom', 'info');
+            return;
+        }
+        newIndex = cellIndex + 1;
+    }
+    
+    // Get DOM elements
+    const allCellElements = document.querySelectorAll('.sql-cell');
+    const currentCellElement = allCellElements[cellIndex];
+    const targetCellElement = allCellElements[newIndex];
+    
+    if (!currentCellElement || !targetCellElement) {
+        console.error('Cell elements not found in DOM');
+        showNotification('Error: Cell elements not found', 'error');
+        return;
+    }
+    
+    // Update DOM immediately for responsive UI
+    if (direction === 'up') {
+        // Insert current cell before target cell
+        targetCellElement.parentNode.insertBefore(currentCellElement, targetCellElement);
+    } else {
+        // Insert current cell after target cell
+        if (targetCellElement.nextSibling) {
+            targetCellElement.parentNode.insertBefore(currentCellElement, targetCellElement.nextSibling);
+        } else {
+            targetCellElement.parentNode.appendChild(currentCellElement);
+        }
+    }
+    
+    // Update in-memory cell order
+    const [movedCell] = cells.splice(cellIndex, 1);
+    cells.splice(newIndex, 0, movedCell);
+    
+    // Update order properties
+    cells.forEach((cell, index) => {
+        cell.order = index + 1;
+    });
+    
+    // Update order displays in the UI
+    updateCellOrderDisplays();
+    
+    // Save the new order to the database asynchronously
+    saveNotebookOrder()
+        .then(() => {
+            showNotification(`Cell moved ${direction} successfully`);
+        })
+        .catch(error => {
+            console.error('Error saving cell order:', error);
+            showNotification('Cell moved but failed to save order', 'error');
+        });
+}
+
+/**
+ * Save the current notebook cell order to the database
+ */
+async function saveNotebookOrder() {
+    try {
+        // Prepare cell data with current order
+        const cellsData = cells.map(cell => ({
+            id: cell.id,
+            query: editors[cell.id] ? editors[cell.id].getValue() : '',
+            order: cell.order,
+            name: cell.name
+        }));
+        
+        const titleInput = document.querySelector('.notebook-title-input');
+        const title = titleInput ? titleInput.value : 'Untitled Notebook';
+        
+        // Send data to server
+        const response = await fetch(`/api/notebooks/${notebookId}/save/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCsrfToken(),
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                title: title,
+                cells: cellsData
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.error || 'Failed to save notebook');
+        }
+        
+        return data;
+    } catch (error) {
+        console.error('Error saving notebook order:', error);
+        throw error;
+    }
+}
+
+/**
+ * Update cell order displays after reordering
+ */
+function updateCellOrderDisplays() {
+    const allCells = document.querySelectorAll('.sql-cell');
+    allCells.forEach((cellElement, index) => {
+        const orderElement = cellElement.querySelector('.cell-order');
+        if (orderElement) {
+            orderElement.textContent = `[${index + 1}]`;
+        }
+        
+        // Update the cell's data-order attribute
+        cellElement.dataset.order = index + 1;
+    });
 }
 
 /**

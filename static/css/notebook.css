@@ -137,6 +137,15 @@
     color: var(--primary-color) !important;
 }
 
+.move-up-btn, .move-down-btn {
+    color: #28a745 !important;
+}
+
+.move-up-btn:hover, .move-down-btn:hover {
+    background-color: #e9ecef;
+    color: #155724 !important;
+}
+
 .cell-editor {
     min-height: 100px;
     border-bottom: 1px solid #e0e0e0;
@@ -302,4 +311,22 @@
 .add-cell-btn:hover {
     background-color: #f8f9fa;
     color: var(--primary-color);
+}
+
+/* Notification Styles */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background-color: #28a745;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    font-size: 14px;
+    max-width: 300px;
+    word-wrap: break-word;
 }

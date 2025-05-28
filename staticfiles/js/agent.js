@@ -158,6 +158,8 @@ class TextToSQLAgent {
         const currentNotebookId = this.getCurrentNotebookId();
         const activeConnectionId = this.getActiveConnectionId();
         
+        console.log('Agent context:', { currentNotebookId, activeConnectionId, query });
+        
         if (!currentNotebookId || !activeConnectionId) {
             this.showError('Please ensure you have a notebook open and a database connection active');
             return;
@@ -166,8 +168,15 @@ class TextToSQLAgent {
         // Show the conversation area
         this.showConversationArea();
 
+        // Create a new notebook cell for the agent work
+        const cellId = await this.createAgentCell(query);
+        if (!cellId) {
+            this.showError('Failed to create notebook cell');
+            return;
+        }
+
         this.isProcessing = true;
-        this.showProcessingStatus('Sending query to agent...');
+        this.updateCellContent(cellId, '-- Processing your request...', 'Processing...');
 
         try {
             // Clear input
@@ -184,6 +193,8 @@ class TextToSQLAgent {
                 conversation_id: this.currentConversationId
             };
 
+            console.log('Sending request to agent:', requestData);
+
             // Send to agent endpoint
             const response = await fetch('/mcp_agent/text-to-sql/', {
                 method: 'POST',
@@ -195,6 +206,7 @@ class TextToSQLAgent {
             });
 
             const result = await response.json();
+            console.log('Agent response:', result);
 
             if (result.success) {
                 // Update conversation ID
@@ -203,12 +215,39 @@ class TextToSQLAgent {
                 // Render the full conversation
                 this.renderAgentConversation(result.messages);
                 
-                // Show completion status
-                this.showSuccessStatus(`Completed in ${result.iterations} iterations`);
-                
-                // If we got final SQL, offer to add it to notebook
-                if (result.final_sql) {
-                    this.offerSqlInsertion(result.final_sql);
+                // Extract final SQL from the conversation
+                let finalSQL = result.final_sql;
+                if (!finalSQL) {
+                    // Try to extract SQL from the last assistant message
+                    const assistantMessages = result.messages.filter(msg => msg.role === 'assistant');
+                    if (assistantMessages.length > 0) {
+                        const lastAssistant = assistantMessages[assistantMessages.length - 1];
+                        const sqlMatch = lastAssistant.content.match(/```sql\s*([\s\S]*?)\s*```/i);
+                        if (sqlMatch) {
+                            finalSQL = sqlMatch[1].trim();
+                        }
+                    }
+                }
+
+                if (finalSQL) {
+                    // Update the cell with the final SQL 
+                    await this.updateCellContent(cellId, finalSQL, `Generated SQL (${result.iterations || 1} iterations)`);
+                    
+                    // Execute the cell to show results in UI (the backend already executed it for iteration)
+                    setTimeout(async () => {
+                        const executionResult = await this.executeCellAndGetResults(cellId);
+                        
+                        if (executionResult.success) {
+                            this.showSuccessStatus(`SQL generated and executed in ${result.iterations || 1} iterations. Returned ${executionResult.rowCount} rows.`);
+                        } else {
+                            // If frontend execution fails, just show a warning but don't fail the whole process
+                            // since the backend execution already worked for the agent
+                            this.showWarning(`SQL generated successfully, but UI execution failed: ${executionResult.error}`);
+                        }
+                    }, 500); // Small delay to ensure cell is fully updated
+                } else {
+                    this.updateCellContent(cellId, '-- No SQL generated', 'No SQL Generated');
+                    this.showError('Agent did not generate valid SQL');
                 }
                 
                 // Show warning if any
@@ -217,11 +256,13 @@ class TextToSQLAgent {
                 }
                 
             } else {
+                this.updateCellContent(cellId, `-- Error: ${result.error}`, 'Error');
                 this.showError(result.error || 'Agent request failed');
             }
 
         } catch (error) {
             console.error('Agent request error:', error);
+            this.updateCellContent(cellId, `-- Network error: ${error.message}`, 'Error');
             this.showError('Network error: ' + error.message);
         } finally {
             this.isProcessing = false;
@@ -233,6 +274,368 @@ class TextToSQLAgent {
         const agentArea = document.getElementById('agentResponseArea');
         if (agentArea) {
             agentArea.style.display = 'block';
+        }
+    }
+
+    async createAgentCell(query) {
+        try {
+            const notebookUuid = this.getNotebookUuid();
+            if (!notebookUuid) {
+                console.error('No notebook UUID found');
+                return null;
+            }
+
+            console.log('Creating cell for notebook:', notebookUuid);
+
+            // Use the global addNewCell function if available
+            if (typeof addNewCell === 'function') {
+                // Get current cell count
+                const currentCells = document.querySelectorAll('.sql-cell').length;
+                
+                // Call the existing function
+                addNewCell();
+                
+                // Wait for the cell to be created
+                let attempts = 0;
+                let cellId = null;
+                while (attempts < 10 && !cellId) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    const newCells = document.querySelectorAll('.sql-cell');
+                    if (newCells.length > currentCells) {
+                        const lastCell = newCells[newCells.length - 1];
+                        cellId = parseInt(lastCell.dataset.cellId);
+                        break;
+                    }
+                    attempts++;
+                }
+                
+                if (cellId) {
+                    await this.updateCellName(cellId, `Agent: ${query.substring(0, 30)}...`);
+                    console.log('Created cell using addNewCell:', cellId);
+                    return cellId;
+                }
+            }
+
+            // Fallback to direct API call
+            const response = await fetch(`/api/notebooks/${notebookUuid}/add-cell/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': this.getCsrfToken()
+                },
+                body: ''
+            });
+
+            const result = await response.json();
+            if (result.success) {
+                console.log('Created cell via API:', result.cell_id);
+                
+                // Manually render the cell if needed
+                if (typeof renderCell === 'function') {
+                    // Remove any placeholder empty state
+                    const emptyNotebook = document.querySelector('.empty-notebook');
+                    if (emptyNotebook) {
+                        emptyNotebook.remove();
+                    }
+                    
+                    renderCell({
+                        id: result.cell_id,
+                        order: result.order,
+                        name: `Agent: ${query.substring(0, 30)}...`,
+                        query: "-- Processing your request...",
+                        result: null,
+                        is_executed: false
+                    });
+                }
+                
+                return result.cell_id;
+            } else {
+                console.error('Failed to create cell:', result.error);
+                return null;
+            }
+        } catch (error) {
+            console.error('Error creating cell:', error);
+            return null;
+        }
+    }
+
+    async updateCellContent(cellId, sql, name) {
+        try {
+            console.log('Updating cell:', cellId, 'with SQL:', sql.substring(0, 50) + '...');
+
+            // Update the CodeMirror editor directly if it exists
+            if (typeof editors !== 'undefined' && editors[cellId]) {
+                editors[cellId].setValue(sql);
+                console.log('Updated CodeMirror editor for cell:', cellId);
+            }
+
+            // Update via existing function if available
+            if (typeof updateCellContent === 'function' && updateCellContent !== this.updateCellContent) {
+                // Use the global notebook function
+                updateCellContent(cellId, sql);
+            } else {
+                // Fallback to direct API call
+                const updateResponse = await fetch(`/api/cells/${cellId}/update/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': this.getCsrfToken()
+                    },
+                    body: `query=${encodeURIComponent(sql)}`
+                });
+
+                const updateResult = await updateResponse.json();
+                if (!updateResult.success) {
+                    console.error('Failed to update cell content:', updateResult.error);
+                    return;
+                }
+            }
+
+            // Update cell name if provided
+            if (name) {
+                await this.updateCellName(cellId, name);
+            }
+
+            console.log('Updated cell:', cellId, 'with SQL length:', sql.length);
+        } catch (error) {
+            console.error('Error updating cell:', error);
+        }
+    }
+
+    async updateCellName(cellId, name) {
+        try {
+            console.log('Updating cell name:', cellId, 'to:', name);
+
+            // Update the name in the UI first
+            const nameElement = document.querySelector(`.cell-name[data-cell-id="${cellId}"]`);
+            if (nameElement) {
+                nameElement.textContent = name;
+                console.log('Updated name element in UI');
+            }
+
+            // Update in the cells array if it exists
+            if (typeof cells !== 'undefined') {
+                const cell = cells.find(c => c.id === cellId);
+                if (cell) {
+                    cell.name = name;
+                }
+            }
+
+            // Use existing function if available
+            if (typeof saveCellName === 'function') {
+                saveCellName(cellId, name, null, nameElement);
+            } else {
+                // Fallback to direct API call
+                const response = await fetch(`/api/cells/${cellId}/update-name/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': this.getCsrfToken()
+                    },
+                    body: `name=${encodeURIComponent(name)}`
+                });
+
+                const result = await response.json();
+                if (!result.success) {
+                    console.error('Failed to update cell name:', result.error);
+                }
+            }
+        } catch (error) {
+            console.error('Error updating cell name:', error);
+        }
+    }
+
+    getNotebookUuid() {
+        // Try to get from the notebook container
+        const notebookContainer = document.getElementById('notebook-container');
+        if (notebookContainer && notebookContainer.dataset.notebookId) {
+            console.log('Found notebook UUID from container:', notebookContainer.dataset.notebookId);
+            return notebookContainer.dataset.notebookId;
+        }
+
+        // Try to get from global notebookId variable
+        if (typeof notebookId !== 'undefined' && notebookId) {
+            console.log('Found notebook UUID from global variable:', notebookId);
+            return notebookId;
+        }
+
+        // Try to extract from URL
+        const urlParts = window.location.pathname.split('/');
+        const workbenchIndex = urlParts.indexOf('workbench');
+        if (workbenchIndex !== -1 && urlParts[workbenchIndex + 1]) {
+            console.log('Found notebook UUID from URL:', urlParts[workbenchIndex + 1]);
+            return urlParts[workbenchIndex + 1];
+        }
+
+        console.warn('Could not find notebook UUID');
+        return null;
+    }
+
+    async executeCellAndGetResults(cellId) {
+        try {
+            console.log('Executing cell:', cellId);
+
+            // Get the SQL query from the cell
+            let query = '';
+            if (typeof editors !== 'undefined' && editors[cellId]) {
+                query = editors[cellId].getValue();
+            } else {
+                // Fallback: get from textarea if CodeMirror isn't available
+                const textarea = document.querySelector(`#editor-${cellId}`);
+                if (textarea) {
+                    query = textarea.value;
+                }
+            }
+
+            if (!query.trim()) {
+                return { success: false, error: 'No SQL query to execute' };
+            }
+
+            console.log('Executing query:', query.substring(0, 100) + '...');
+
+            // Execute the cell via the API
+            const response = await fetch(`/api/cells/${cellId}/execute/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': this.getCsrfToken()
+                },
+                body: `query=${encodeURIComponent(query)}`
+            });
+
+            const result = await response.json();
+            console.log('Execution result:', result);
+
+            if (result.success) {
+                // Update the cell UI to show results (like the notebook executeCell function does)
+                this.updateCellResultDisplay(cellId, result);
+
+                // Extract the raw data for the LLM (before formatting)
+                const rawData = this.extractRawResultData(result.result);
+
+                return {
+                    success: true,
+                    data: rawData,
+                    executionTime: result.execution_time,
+                    rowCount: rawData.rows ? rawData.rows.length : 0
+                };
+            } else {
+                // Update cell to show error
+                this.updateCellResultDisplay(cellId, result);
+                
+                return {
+                    success: false,
+                    error: result.error || 'Query execution failed'
+                };
+            }
+
+        } catch (error) {
+            console.error('Error executing cell:', error);
+            return {
+                success: false,
+                error: `Network error: ${error.message}`
+            };
+        }
+    }
+
+    updateCellResultDisplay(cellId, executionResult) {
+        try {
+            // Find the cell element
+            const cellElement = document.querySelector(`[data-cell-id="${cellId}"]`);
+            if (!cellElement) {
+                console.warn('Cell element not found for result display');
+                return;
+            }
+
+            const resultElement = cellElement.querySelector('.cell-result');
+            if (!resultElement) {
+                console.warn('Result element not found in cell');
+                return;
+            }
+
+            // Show the result area
+            resultElement.classList.remove('hidden');
+
+            if (executionResult.success) {
+                // Update execution time
+                const execTimeSpan = resultElement.querySelector('.exec-time');
+                if (execTimeSpan) {
+                    execTimeSpan.textContent = `(${executionResult.execution_time.toFixed(2)}s)`;
+                } else {
+                    const resultHeader = resultElement.querySelector('.result-header');
+                    if (resultHeader) {
+                        const timeSpan = document.createElement('span');
+                        timeSpan.className = 'exec-time';
+                        timeSpan.textContent = `(${executionResult.execution_time.toFixed(2)}s)`;
+                        resultHeader.appendChild(timeSpan);
+                    }
+                }
+
+                // Format and display results using the existing formatResult function
+                const resultContentEl = resultElement.querySelector('.result-content');
+                if (resultContentEl && typeof formatResult === 'function') {
+                    resultContentEl.innerHTML = formatResult(executionResult.result);
+                } else {
+                    // Fallback simple display
+                    resultContentEl.innerHTML = '<div class="result-success">Query executed successfully</div>';
+                }
+            } else {
+                // Show error
+                const resultContentEl = resultElement.querySelector('.result-content');
+                if (resultContentEl) {
+                    resultContentEl.innerHTML = `<div class="error-result">Error: ${executionResult.error || 'Unknown error'}</div>`;
+                }
+            }
+
+            console.log('Updated cell result display for cell:', cellId);
+        } catch (error) {
+            console.error('Error updating cell result display:', error);
+        }
+    }
+
+    extractRawResultData(result) {
+        try {
+            if (!result) {
+                return { rows: [], columns: [], rowCount: 0 };
+            }
+
+            // Use the same logic as processResultForExport to get clean data
+            let rows = [];
+            let columns = [];
+
+            if (result.rows && Array.isArray(result.rows)) {
+                rows = result.rows;
+                if (result.columns && Array.isArray(result.columns)) {
+                    columns = result.columns;
+                } else if (rows.length > 0) {
+                    // Extract column names from first row
+                    columns = Object.keys(rows[0]);
+                }
+            } else if (result.data && Array.isArray(result.data) && result.columns) {
+                // Convert from column-based to row-based format
+                columns = result.columns;
+                const rowCount = result.data[0]?.length || 0;
+                
+                for (let i = 0; i < rowCount; i++) {
+                    const rowData = {};
+                    for (let j = 0; j < columns.length; j++) {
+                        if (result.data[j] && i < result.data[j].length) {
+                            rowData[columns[j]] = result.data[j][i];
+                        }
+                    }
+                    rows.push(rowData);
+                }
+            }
+
+            return {
+                rows: rows,
+                columns: columns,
+                rowCount: rows.length
+            };
+
+        } catch (error) {
+            console.error('Error extracting raw result data:', error);
+            return { rows: [], columns: [], rowCount: 0 };
         }
     }
 
