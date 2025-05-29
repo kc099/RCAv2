@@ -113,10 +113,15 @@ function saveCellName(cellId, name, inputElement, nameElement) {
     }
     
     // Update in memory
-    const cell = cells.find(c => c.id === parseInt(cellId));
-    if (cell) {
-        cell.name = displayName;
+    const cellIndex = cells.findIndex(c => c.id === cellId);
+    if (cellIndex !== -1) {
+        cells[cellIndex].name = displayName;
     }
+    
+    // Dispatch event for cell reference manager
+    document.dispatchEvent(new CustomEvent('cellUpdated', { 
+        detail: { cellId: cellId, newName: displayName } 
+    }));
     
     // Send to server
     fetch(`/api/cells/${cellId}/update-name/`, {
@@ -323,6 +328,11 @@ function renderCell(cellData) {
         element: cellElement,
         name: cellData.name || 'Untitled Cell'
     });
+    
+    // Dispatch event for cell reference manager
+    document.dispatchEvent(new CustomEvent('cellAdded', { 
+        detail: { cellId: cellData.id, cellData: cellData } 
+    }));
 }
 
 /**
@@ -1150,6 +1160,11 @@ function deleteCell(cellId) {
                     
                     // Remove editor reference
                     delete editors[cellId];
+                    
+                    // Dispatch event for cell reference manager
+                    document.dispatchEvent(new CustomEvent('cellDeleted', { 
+                        detail: { cellId: cellId } 
+                    }));
                 }
             } else {
                 alert('Failed to delete cell: ' + (data.error || 'Unknown error'));

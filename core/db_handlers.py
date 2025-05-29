@@ -29,7 +29,8 @@ def execute_mysql_query(connection_info, query):
             port=connection_info.get('port'),
             database=connection_info.get('database'),
             user=connection_info.get('username'),
-            password=connection_info.get('password')
+            password=connection_info.get('password'),
+            buffered=True
         )
         
         cursor = conn.cursor(dictionary=True)

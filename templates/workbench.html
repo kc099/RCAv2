@@ -66,8 +66,24 @@
                     <!-- Natural language to SQL interface -->
                     <div class="nl-to-sql">
                         <div class="nl-input-container">
-                            <input type="text" class="nl-input" placeholder="Describe your query in natural language...">
-                            <button class="nl-submit">Generate SQL</button>
+                            <div class="nl-input-row">
+                                <div class="nl-input-wrapper">
+                                    <input type="text" class="nl-input" id="nlQueryInput" placeholder="Describe your query in natural language...">
+                                    <button class="cell-reference-btn" id="cellReferenceBtn" title="Reference cells">
+                                        <i class="fas fa-at"></i>
+                                    </button>
+                                    <div class="cell-reference-dropdown" id="cellReferenceDropdown" style="display: none;">
+                                        <div class="cell-reference-header">Reference cells in your query</div>
+                                        <div class="cell-reference-search">
+                                            <input type="text" placeholder="Search cells..." id="cellSearchInput">
+                                        </div>
+                                        <div class="cell-reference-list" id="cellReferenceList">
+                                            <div class="no-cells-message">No cells available in this notebook</div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button class="nl-submit" id="submitNlQuery"><i class="fas fa-robot"></i> Ask Agent</button>
+                            </div>
                         </div>
                         <div class="example-prompts">
                             <button class="example-prompt">Show all customers who made a purchase in the last 30 days</button>

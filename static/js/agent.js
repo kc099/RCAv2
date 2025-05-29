@@ -1,4 +1,323 @@
 /**
+ * Cell Reference Manager - Handles @ functionality for referencing cells
+ */
+class CellReferenceManager {
+    constructor() {
+        this.isDropdownOpen = false;
+        this.selectedCells = new Map(); // cellId -> cellData
+        this.availableCells = [];
+        this.init();
+    }
+
+    init() {
+        this.setupEventListeners();
+        this.loadAvailableCells();
+    }
+
+    setupEventListeners() {
+        // Reference button click
+        document.addEventListener('click', (e) => {
+            if (e.target.id === 'cellReferenceBtn' || e.target.closest('#cellReferenceBtn')) {
+                e.preventDefault();
+                this.toggleDropdown();
+            }
+        });
+
+        // Search input
+        document.addEventListener('input', (e) => {
+            if (e.target.id === 'cellSearchInput') {
+                this.filterCells(e.target.value);
+            }
+        });
+
+        // Cell selection
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.cell-reference-item')) {
+                const item = e.target.closest('.cell-reference-item');
+                const cellId = parseInt(item.dataset.cellId);
+                this.toggleCellSelection(cellId);
+            }
+        });
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.nl-input-wrapper')) {
+                this.closeDropdown();
+            }
+        });
+
+        // Handle @ key in input
+        document.addEventListener('keydown', (e) => {
+            if (e.target.id === 'nlQueryInput') {
+                if (e.key === '@') {
+                    setTimeout(() => this.openDropdown(), 10);
+                } else if (e.key === 'Escape' && this.isDropdownOpen) {
+                    this.closeDropdown();
+                }
+            }
+        });
+
+        // Remove tag clicks
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('remove-tag')) {
+                const tag = e.target.closest('.cell-reference-tag');
+                const cellId = parseInt(tag.dataset.cellId);
+                this.deselectCell(cellId);
+            }
+        });
+
+        // Listen for cell updates
+        document.addEventListener('cellUpdated', () => {
+            this.loadAvailableCells();
+        });
+
+        document.addEventListener('cellAdded', () => {
+            this.loadAvailableCells();
+        });
+
+        document.addEventListener('cellDeleted', () => {
+            this.loadAvailableCells();
+        });
+    }
+
+    loadAvailableCells() {
+        this.availableCells = [];
+        
+        // Get cells from the notebook DOM
+        const cellElements = document.querySelectorAll('.sql-cell');
+        cellElements.forEach(cellElement => {
+            const cellId = parseInt(cellElement.dataset.cellId);
+            const cellOrder = parseInt(cellElement.dataset.order);
+            const cellNameElement = cellElement.querySelector('.cell-name');
+            const cellName = cellNameElement ? cellNameElement.textContent.trim() : `Cell ${cellOrder}`;
+            
+            // Get cell query content
+            let cellQuery = '';
+            try {
+                const editorId = `editor-${cellId}`;
+                if (window.editors && window.editors[editorId]) {
+                    cellQuery = window.editors[editorId].getValue();
+                } else {
+                    const textarea = cellElement.querySelector('.cell-editor-textarea');
+                    if (textarea) {
+                        cellQuery = textarea.value;
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not get query for cell', cellId, error);
+            }
+
+            this.availableCells.push({
+                id: cellId,
+                order: cellOrder,
+                name: cellName,
+                query: cellQuery || '-- Empty cell'
+            });
+        });
+
+        this.renderCellList();
+    }
+
+    renderCellList() {
+        const listElement = document.getElementById('cellReferenceList');
+        if (!listElement) return;
+
+        if (this.availableCells.length === 0) {
+            listElement.innerHTML = '<div class="no-cells-message">No cells available in this notebook</div>';
+            return;
+        }
+
+        const html = this.availableCells.map(cell => {
+            const isSelected = this.selectedCells.has(cell.id);
+            const preview = cell.query.length > 50 ? 
+                cell.query.substring(0, 50) + '...' : 
+                cell.query;
+
+            return `
+                <div class="cell-reference-item ${isSelected ? 'selected' : ''}" data-cell-id="${cell.id}">
+                    <div class="cell-name-ref">
+                        <span class="cell-order-ref">[${cell.order}]</span>
+                        ${cell.name}
+                    </div>
+                    <div class="cell-preview">${preview}</div>
+                </div>
+            `;
+        }).join('');
+
+        listElement.innerHTML = html;
+    }
+
+    filterCells(searchTerm) {
+        const filteredCells = this.availableCells.filter(cell => {
+            const searchLower = searchTerm.toLowerCase();
+            return cell.name.toLowerCase().includes(searchLower) ||
+                   cell.query.toLowerCase().includes(searchLower) ||
+                   cell.order.toString().includes(searchTerm);
+        });
+
+        const listElement = document.getElementById('cellReferenceList');
+        if (!listElement) return;
+
+        if (filteredCells.length === 0) {
+            listElement.innerHTML = '<div class="no-cells-message">No cells match your search</div>';
+            return;
+        }
+
+        const html = filteredCells.map(cell => {
+            const isSelected = this.selectedCells.has(cell.id);
+            const preview = cell.query.length > 50 ? 
+                cell.query.substring(0, 50) + '...' : 
+                cell.query;
+
+            return `
+                <div class="cell-reference-item ${isSelected ? 'selected' : ''}" data-cell-id="${cell.id}">
+                    <div class="cell-name-ref">
+                        <span class="cell-order-ref">[${cell.order}]</span>
+                        ${cell.name}
+                    </div>
+                    <div class="cell-preview">${preview}</div>
+                </div>
+            `;
+        }).join('');
+
+        listElement.innerHTML = html;
+    }
+
+    toggleDropdown() {
+        if (this.isDropdownOpen) {
+            this.closeDropdown();
+        } else {
+            this.openDropdown();
+        }
+    }
+
+    openDropdown() {
+        const dropdown = document.getElementById('cellReferenceDropdown');
+        const button = document.getElementById('cellReferenceBtn');
+        
+        if (dropdown && button) {
+            this.loadAvailableCells();
+            dropdown.style.display = 'block';
+            button.classList.add('active');
+            this.isDropdownOpen = true;
+            
+            // Focus search input
+            const searchInput = document.getElementById('cellSearchInput');
+            if (searchInput) {
+                setTimeout(() => searchInput.focus(), 100);
+            }
+        }
+    }
+
+    closeDropdown() {
+        const dropdown = document.getElementById('cellReferenceDropdown');
+        const button = document.getElementById('cellReferenceBtn');
+        
+        if (dropdown && button) {
+            dropdown.style.display = 'none';
+            button.classList.remove('active');
+            this.isDropdownOpen = false;
+            
+            // Clear search
+            const searchInput = document.getElementById('cellSearchInput');
+            if (searchInput) {
+                searchInput.value = '';
+            }
+        }
+    }
+
+    toggleCellSelection(cellId) {
+        if (this.selectedCells.has(cellId)) {
+            this.deselectCell(cellId);
+        } else {
+            this.selectCell(cellId);
+        }
+    }
+
+    selectCell(cellId) {
+        const cell = this.availableCells.find(c => c.id === cellId);
+        if (cell) {
+            this.selectedCells.set(cellId, cell);
+            this.renderSelectedCells();
+            this.renderCellList(); // Update selection state in dropdown
+        }
+    }
+
+    deselectCell(cellId) {
+        this.selectedCells.delete(cellId);
+        this.renderSelectedCells();
+        this.renderCellList(); // Update selection state in dropdown
+    }
+
+    renderSelectedCells() {
+        const container = document.querySelector('.nl-input-container');
+        if (!container) return;
+
+        // Remove existing tags
+        const existingTags = container.querySelector('.cell-reference-tags');
+        if (existingTags) {
+            existingTags.remove();
+        }
+
+        if (this.selectedCells.size === 0) return;
+
+        // Create tags container
+        const tagsContainer = document.createElement('div');
+        tagsContainer.className = 'cell-reference-tags';
+
+        this.selectedCells.forEach(cell => {
+            const tag = document.createElement('div');
+            tag.className = 'cell-reference-tag';
+            tag.dataset.cellId = cell.id;
+            tag.innerHTML = `
+                <span>[${cell.order}] ${cell.name}</span>
+                <span class="remove-tag">×</span>
+            `;
+            tagsContainer.appendChild(tag);
+        });
+
+        // Insert tags at the beginning of the container (above the input row)
+        const inputRow = container.querySelector('.nl-input-row');
+        if (inputRow) {
+            container.insertBefore(tagsContainer, inputRow);
+        } else {
+            // Fallback: insert at the beginning
+            container.insertBefore(tagsContainer, container.firstChild);
+        }
+    }
+
+    getSelectedCellsData() {
+        const cellsData = [];
+        this.selectedCells.forEach(cell => {
+            cellsData.push({
+                id: cell.id,
+                name: cell.name,
+                order: cell.order,
+                query: cell.query
+            });
+        });
+        return cellsData;
+    }
+
+    getReferencedCellsText() {
+        if (this.selectedCells.size === 0) return '';
+
+        let referencedText = '\n\n--- Referenced Cells ---\n';
+        this.selectedCells.forEach(cell => {
+            referencedText += `\n[${cell.order}] ${cell.name}:\n${cell.query}\n`;
+        });
+        referencedText += '--- End Referenced Cells ---\n';
+        return referencedText;
+    }
+
+    clearSelectedCells() {
+        this.selectedCells.clear();
+        this.renderSelectedCells();
+        this.renderCellList();
+    }
+}
+
+/**
  * Agent.js - Text-to-SQL Agent Integration
  * 
  * This module handles the interaction with the LangGraph text-to-SQL agent,
@@ -9,6 +328,7 @@ class TextToSQLAgent {
     constructor() {
         this.currentConversationId = null;
         this.isProcessing = false;
+        this.cellReferenceManager = new CellReferenceManager();
         this.init();
     }
 
@@ -77,24 +397,37 @@ class TextToSQLAgent {
             // Enhance the existing input
             existingNlInput.id = 'nlQueryInput';
             
-            // Find or create the submit button
-            let submitButton = existingNlInput.parentElement.querySelector('button');
-            console.log('Found button:', submitButton);
+            // Find the submit button - it should be OUTSIDE the nl-input-wrapper, not inside
+            const nlInputContainer = existingNlInput.closest('.nl-input-container');
+            let submitButton = null;
+            
+            if (nlInputContainer) {
+                // Look for button outside the input wrapper (not the @ button inside)
+                submitButton = nlInputContainer.querySelector('.nl-submit');
+                if (!submitButton) {
+                    // Look for any button that's a direct child of nl-input-container but not in nl-input-wrapper
+                    const buttons = nlInputContainer.querySelectorAll('button');
+                    for (const btn of buttons) {
+                        if (!btn.closest('.nl-input-wrapper')) {
+                            submitButton = btn;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            console.log('Found submit button:', submitButton);
             
             if (submitButton) {
-                // Update existing button
+                // Update existing submit button (keep original styling)
                 submitButton.innerHTML = '<i class="fas fa-robot"></i> Ask Agent';
-                submitButton.className = 'nl-submit btn btn-primary';
+                submitButton.className = 'nl-submit';
+                submitButton.id = 'submitNlQuery';
             } else {
-                // Create new button if none exists
-                submitButton = document.createElement('button');
-                submitButton.innerHTML = '<i class="fas fa-robot"></i> Ask Agent';
-                submitButton.className = 'btn btn-primary ms-2';
-                existingNlInput.parentElement.appendChild(submitButton);
+                console.warn('Submit button not found in expected location');
             }
-            submitButton.id = 'submitNlQuery';
             
-            console.log('Enhanced button:', submitButton);
+            console.log('Enhanced submit button:', submitButton);
             
             // The agent response area is now in the HTML template, just show it when needed
             const agentArea = document.getElementById('agentResponseArea');
@@ -168,6 +501,14 @@ class TextToSQLAgent {
         // Show the conversation area
         this.showConversationArea();
 
+        // Combine user query with referenced cells content
+        let enhancedQuery = query;
+        const referencedCellsText = this.cellReferenceManager.getReferencedCellsText();
+        if (referencedCellsText) {
+            enhancedQuery += referencedCellsText;
+            console.log('Enhanced query with referenced cells:', enhancedQuery);
+        }
+
         // Create a new notebook cell for the agent work
         const cellId = await this.createAgentCell(query);
         if (!cellId) {
@@ -179,15 +520,17 @@ class TextToSQLAgent {
         this.updateCellContent(cellId, '-- Processing your request...', 'Processing...');
 
         try {
-            // Clear input
+            // Clear input and selected cells
             nlInput.value = '';
+            this.cellReferenceManager.clearSelectedCells();
+            this.cellReferenceManager.closeDropdown();
             
-            // Add user message to conversation immediately
+            // Add user message to conversation immediately (show original query without cell references)
             this.addMessageToConversation('user', query);
             
-            // Prepare request data
+            // Prepare request data with enhanced query
             const requestData = {
-                query: query,
+                query: enhancedQuery, // Send enhanced query with cell references
                 connection_id: activeConnectionId,
                 notebook_id: currentNotebookId,
                 conversation_id: this.currentConversationId
@@ -230,43 +573,29 @@ class TextToSQLAgent {
                 }
 
                 if (finalSQL) {
-                    // Update the cell with the final SQL 
-                    await this.updateCellContent(cellId, finalSQL, `Generated SQL (${result.iterations || 1} iterations)`);
+                    console.log('Final SQL extracted:', finalSQL);
                     
-                    // Execute the cell to show results in UI (the backend already executed it for iteration)
-                    setTimeout(async () => {
-                        const executionResult = await this.executeCellAndGetResults(cellId);
-                        
-                        if (executionResult.success) {
-                            this.showSuccessStatus(`SQL generated and executed in ${result.iterations || 1} iterations. Returned ${executionResult.rowCount} rows.`);
-                        } else {
-                            // If frontend execution fails, just show a warning but don't fail the whole process
-                            // since the backend execution already worked for the agent
-                            this.showWarning(`SQL generated successfully, but UI execution failed: ${executionResult.error}`);
-                        }
-                    }, 500); // Small delay to ensure cell is fully updated
+                    // Update the cell with the final SQL
+                    this.updateCellContent(cellId, finalSQL, 'Generated SQL');
+                    
+                    // Show success status
+                    this.showSuccessStatus('SQL generated successfully! Click "Run" to execute it.');
                 } else {
-                    this.updateCellContent(cellId, '-- No SQL generated', 'No SQL Generated');
-                    this.showError('Agent did not generate valid SQL');
+                    this.updateCellContent(cellId, '-- No SQL was generated', 'No Result');
+                    this.showWarningStatus('Agent completed but no SQL was generated.');
                 }
-                
-                // Show warning if any
-                if (result.warning) {
-                    this.showWarning(result.warning);
-                }
-                
             } else {
+                console.error('Agent error:', result.error);
                 this.updateCellContent(cellId, `-- Error: ${result.error}`, 'Error');
-                this.showError(result.error || 'Agent request failed');
+                this.showError(`Agent error: ${result.error}`);
             }
 
         } catch (error) {
-            console.error('Agent request error:', error);
+            console.error('Error calling agent:', error);
             this.updateCellContent(cellId, `-- Network error: ${error.message}`, 'Error');
-            this.showError('Network error: ' + error.message);
+            this.showError(`Network error: ${error.message}`);
         } finally {
             this.isProcessing = false;
-            this.hideProcessingStatus();
         }
     }
 
