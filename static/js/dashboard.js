@@ -11,6 +11,9 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initDashboard() {
+    // Check if Plotly is available
+    checkPlotlyAvailability();
+    
     // Set up event listeners
     const generateBtn = document.getElementById('generate-chart');
     if (generateBtn) {
@@ -24,6 +27,48 @@ function initDashboard() {
     const plotTypeSelect = document.getElementById('plot-type');
     if (plotTypeSelect) {
         plotTypeSelect.addEventListener('change', updateFormForPlotType);
+    }
+}
+
+/**
+ * Check if Plotly.js is available and show appropriate feedback
+ */
+function checkPlotlyAvailability() {
+    if (typeof Plotly === 'undefined') {
+        console.warn('Plotly.js is not immediately available. Listening for plotlyLoaded event...');
+        
+        // Listen for the plotlyLoaded event from the enhanced loading script
+        document.addEventListener('plotlyLoaded', function() {
+            console.log('Plotly.js loading confirmed via event in dashboard.js');
+            // Remove any warning that was previously shown
+            const existingWarning = document.querySelector('.plotly-warning');
+            if (existingWarning) {
+                existingWarning.remove();
+            }
+        });
+        
+        // Add a warning to the dashboard if there's a container
+        const dashboardContainer = document.getElementById('dashboard-container');
+        if (dashboardContainer) {
+            const warningDiv = document.createElement('div');
+            warningDiv.className = 'plotly-warning';
+            warningDiv.style.cssText = 'background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 10px; margin: 10px 0; border-radius: 4px; font-size: 14px;';
+            warningDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Loading chart functionality...';
+            
+            // Insert at the beginning of dashboard container
+            dashboardContainer.insertBefore(warningDiv, dashboardContainer.firstChild);
+            
+            // Remove warning after 5 seconds if Plotly still hasn't loaded
+            setTimeout(() => {
+                if (typeof Plotly === 'undefined' && warningDiv.parentNode) {
+                    warningDiv.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Chart functionality may require page refresh if Plotly.js fails to load.';
+                } else if (typeof Plotly !== 'undefined' && warningDiv.parentNode) {
+                    warningDiv.remove();
+                }
+            }, 5000);
+        }
+    } else {
+        console.log('Plotly.js is available:', Plotly.BUILD || 'version info unavailable');
     }
 }
 
@@ -264,6 +309,78 @@ function generateChart() {
         return;
     }
     
+    // Check if Plotly is available
+    if (typeof Plotly === 'undefined') {
+        console.error('Plotly.js is not loaded. Checking if load is in progress...');
+        
+        // Check if loading is already in progress by looking for script tags
+        const existingPlotlyScripts = Array.from(document.scripts).filter(script => 
+            script.src && script.src.includes('plotly')
+        );
+        
+        if (existingPlotlyScripts.length > 0) {
+            console.log('Plotly.js loading detected, waiting for load completion...');
+            showNotification('Chart library is loading, please wait...', 'info');
+            
+            // Wait for plotlyLoaded event or timeout after 10 seconds
+            const plotlyLoadPromise = new Promise((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    reject(new Error('Plotly loading timeout'));
+                }, 10000);
+                
+                document.addEventListener('plotlyLoaded', function() {
+                    clearTimeout(timeout);
+                    resolve();
+                }, { once: true });
+                
+                // Also check if Plotly becomes available via polling
+                const pollInterval = setInterval(() => {
+                    if (typeof Plotly !== 'undefined') {
+                        clearTimeout(timeout);
+                        clearInterval(pollInterval);
+                        resolve();
+                    }
+                }, 100);
+            });
+            
+            plotlyLoadPromise
+                .then(() => {
+                    console.log('Plotly.js loaded, retrying chart generation');
+                    setTimeout(generateChart, 100);
+                })
+                .catch(() => {
+                    showNotification('Chart library failed to load. Please refresh the page and try again.', 'error');
+                });
+            
+            return;
+        } else {
+            // No loading in progress, try to load manually
+            console.log('No Plotly loading detected, attempting manual load...');
+            
+            const script = document.createElement('script');
+            script.src = 'https://cdn.plot.ly/plotly-3.0.1.min.js';
+            script.onload = function() {
+                console.log('Plotly.js loaded manually');
+                setTimeout(generateChart, 100);
+            };
+            script.onerror = function() {
+                // Try backup CDN
+                const backupScript = document.createElement('script');
+                backupScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js';
+                backupScript.onload = function() {
+                    console.log('Plotly.js loaded from backup CDN');
+                    setTimeout(generateChart, 100);
+                };
+                backupScript.onerror = function() {
+                    showNotification('Failed to load chart library. Please refresh the page and try again.', 'error');
+                };
+                document.head.appendChild(backupScript);
+            };
+            document.head.appendChild(script);
+            return;
+        }
+    }
+    
     // Get chart options from form
     const plotType = document.getElementById('plot-type').value;
     const xAxis = document.getElementById('x-axis').value;
@@ -274,6 +391,7 @@ function generateChart() {
     const chartContainer = document.getElementById('chart-container');
     if (!chartContainer) {
         console.error('Chart container not found');
+        showNotification('Chart container not found. Please refresh the page and try again.', 'error');
         return;
     }
     
@@ -423,11 +541,16 @@ function generateChart() {
             pad: 4
         };
         
-        // Render the plot
-        Plotly.newPlot(chartContainer, plotData, layout, {responsive: true});
-        
-        // Show success message
-        showNotification('Chart generated successfully');
+        // Render the plot with error handling
+        try {
+            Plotly.newPlot(chartContainer, plotData, layout, {responsive: true});
+            
+            // Show success message
+            showNotification('Chart generated successfully');
+        } catch (plotlyError) {
+            console.error('Plotly rendering error:', plotlyError);
+            showNotification('Error rendering chart: ' + plotlyError.message, 'error');
+        }
         
     } catch (error) {
         console.error('Error generating chart:', error);
@@ -444,9 +567,30 @@ function showNotification(message, type = 'success') {
     notification.className = 'notification';
     notification.textContent = message;
     
+    // Set background color based on type
     if (type === 'error') {
         notification.style.backgroundColor = '#dc3545';
+    } else if (type === 'info') {
+        notification.style.backgroundColor = '#17a2b8';
+    } else {
+        notification.style.backgroundColor = '#28a745'; // success
     }
+    
+    // Base notification styles
+    notification.style.cssText += `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 4px;
+        z-index: 9999;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        max-width: 300px;
+        font-size: 14px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    `;
     
     // Add to body
     document.body.appendChild(notification);
@@ -459,7 +603,9 @@ function showNotification(message, type = 'success') {
         setTimeout(() => {
             notification.style.opacity = '0';
             setTimeout(() => {
-                notification.remove();
+                if (notification.parentNode) {
+                    notification.remove();
+                }
             }, 300);
         }, 3000);
     }, 10);

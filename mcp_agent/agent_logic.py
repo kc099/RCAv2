@@ -39,10 +39,82 @@ class AgentState(TypedDict):
     error_message: Optional[str]  # Last error message if any
 
 
-def get_system_prompt(database_schema: str, user_nl_query: str, iteration: int = 0) -> str:
+def get_database_specific_instructions(connection_type: str) -> str:
+    """Get database-specific SQL syntax instructions"""
+    connection_type = connection_type.lower()
+    
+    instructions = {
+        'mysql': """
+**MySQL-Specific Guidelines:**
+- Use backticks (`) for table/column names with spaces or reserved words
+- Use LIMIT for pagination (e.g., LIMIT 10, LIMIT 10 OFFSET 20)
+- Date functions: NOW(), CURDATE(), DATE_ADD(), DATE_SUB(), STR_TO_DATE()
+- String functions: CONCAT(), SUBSTRING(), LENGTH(), UPPER(), LOWER()
+- Use IFNULL() for NULL handling
+- Auto-increment columns typically use AUTO_INCREMENT
+- Boolean values: TRUE/FALSE or 1/0
+- Comments use -- or /* */
+- GROUP BY requires all non-aggregate columns to be listed
+""",
+        'redshift': """
+**Amazon Redshift-Specific Guidelines:**
+- Use double quotes (") for case-sensitive identifiers
+- Use LIMIT for pagination (PostgreSQL syntax)
+- Date functions: GETDATE(), DATEADD(), DATEDIFF(), TO_DATE()
+- String functions: CONCAT(), SUBSTRING(), LEN(), UPPER(), LOWER()
+- Use NVL() or COALESCE() for NULL handling
+- No AUTO_INCREMENT - use IDENTITY columns instead
+- Boolean values: TRUE/FALSE
+- Supports window functions and analytical queries
+- DISTKEY and SORTKEY for performance optimization
+- Use UNLOAD to export data
+""",
+        'postgresql': """
+**PostgreSQL-Specific Guidelines:**
+- Use double quotes (") for case-sensitive identifiers
+- Use LIMIT and OFFSET for pagination
+- Date functions: NOW(), CURRENT_DATE, DATE_TRUNC(), EXTRACT()
+- String functions: CONCAT(), SUBSTRING(), LENGTH(), UPPER(), LOWER()
+- Use COALESCE() for NULL handling
+- Use SERIAL or IDENTITY for auto-increment
+- Boolean values: TRUE/FALSE
+- Rich data types: JSON, JSONB, arrays, custom types
+- Window functions and CTEs (Common Table Expressions)
+- Case-sensitive by default for unquoted identifiers (lowercase)
+""",
+        'snowflake': """
+**Snowflake-Specific Guidelines:**
+- Identifiers are case-insensitive unless quoted
+- Use LIMIT for pagination
+- Date functions: CURRENT_TIMESTAMP(), DATEADD(), DATEDIFF(), TO_DATE()
+- String functions: CONCAT(), SUBSTRING(), LENGTH(), UPPER(), LOWER()
+- Use NVL() or COALESCE() for NULL handling
+- Use AUTOINCREMENT for auto-increment columns
+- Rich data types: VARIANT for JSON, ARRAY, OBJECT
+- Window functions and analytical queries
+- Time travel capabilities with AT clause
+"""
+    }
+    
+    return instructions.get(connection_type, """
+**Standard SQL Guidelines:**
+- Use standard SQL-92/99 syntax when possible
+- Use LIMIT for row limitation (may vary by database)
+- Standard functions: CONCAT(), SUBSTRING(), UPPER(), LOWER()
+- Use COALESCE() for NULL handling
+- Follow ANSI SQL standards for maximum compatibility
+""")
+
+
+def get_system_prompt(database_schema: str, user_nl_query: str, connection_type: str, iteration: int = 0) -> str:
     """Generate the system prompt for the Anthropic API"""
     
+    # Get database-specific instructions
+    db_specific_instructions = get_database_specific_instructions(connection_type)
+    
     base_prompt = f"""You are an expert SQL generation assistant. Your role is to help users generate accurate SQL queries based on their natural language requests and the provided database schema.
+
+**Database Type:** {connection_type.upper()}
 
 **Database Schema:**
 {database_schema}
@@ -52,20 +124,23 @@ def get_system_prompt(database_schema: str, user_nl_query: str, iteration: int =
 
 **Current Iteration:** {iteration}
 
+{db_specific_instructions}
+
 **Your Workflow:**
 1. Analyze the user's request and the database schema carefully
-2. Generate SQL queries that accurately fulfill the request  
+2. Generate SQL queries that accurately fulfill the request using {connection_type.upper()}-specific syntax
 3. When you have a SQL query ready for execution, respond with the SQL enclosed in ```sql ... ``` blocks
-4. If SQL execution fails, analyze the error and provide corrected SQL
+4. If SQL execution fails, analyze the error and provide corrected SQL using proper {connection_type.upper()} syntax
 5. If results look correct, say "This is the final query" to complete the task
 6. If results are unexpected, refine the query based on feedback
 
 **Important Guidelines:**
 - Use the exact table and column names from the schema
+- Follow {connection_type.upper()}-specific syntax and functions
 - Consider relationships between tables when writing JOINs
-- Be careful with data types and NULL handling
+- Be careful with data types and NULL handling specific to {connection_type.upper()}
 - Start simple and iterate if needed
-- Always validate your SQL syntax
+- Always validate your SQL syntax for {connection_type.upper()}
 - Provide clear, readable SQL with proper formatting
 
 **Termination:**
@@ -77,10 +152,10 @@ def get_system_prompt(database_schema: str, user_nl_query: str, iteration: int =
 - Add explanation before or after the SQL block
 - For final answers: Include "This is the final query" in your response
 
-Begin by analyzing the schema and user request to generate an appropriate SQL query."""
+Begin by analyzing the schema and user request to generate an appropriate {connection_type.upper()} SQL query."""
 
     if iteration > 0:
-        base_prompt += f"\n\n**Note:** This is iteration {iteration}. Review the previous execution results and refine your approach if needed."
+        base_prompt += f"\n\n**Note:** This is iteration {iteration}. Review the previous execution results and refine your approach if needed. Ensure you're using correct {connection_type.upper()} syntax."
         
     return base_prompt
 
@@ -93,14 +168,26 @@ def sql_generation_node(state: AgentState) -> AgentState:
             api_key=settings.ANTHROPIC_API_KEY
         )
         
+        # Get connection type dynamically from the database connection
+        try:
+            db_connection = DatabaseConnection.objects.get(
+                id=state["active_connection_id"],
+                user=state["user_object"]
+            )
+            connection_type = db_connection.connection_type
+        except DatabaseConnection.DoesNotExist:
+            logger.warning(f"Database connection {state['active_connection_id']} not found, using 'mysql' as default")
+            connection_type = 'mysql'  # Default fallback
+        
         # Prepare messages for Anthropic API
         messages = []
         
-        # Add system message
-        system_prompt = get_system_prompt(state["database_schema"], state["user_nl_query"], state["current_iteration"])
+        # Add system message with dynamic connection type
+        system_prompt = get_system_prompt(state["database_schema"], state["user_nl_query"], connection_type, state["current_iteration"])
         
         logger.debug(f"System prompt length: {len(system_prompt)} characters")
         logger.debug(f"Database schema length: {len(state['database_schema'])} characters")
+        logger.debug(f"Connection type: {connection_type}")
         
         # Add conversation history
         for msg in state["messages"]:
@@ -131,7 +218,25 @@ def sql_generation_node(state: AgentState) -> AgentState:
         sql_pattern = r'```sql\s*(.*?)\s*```'
         sql_matches = re.findall(sql_pattern, response_content, re.DOTALL | re.IGNORECASE)
         
-        # Update state
+        # Check for duplicate SQL queries before adding the new message
+        current_sql = sql_matches[-1].strip() if sql_matches else None
+        
+        # Get previous assistant messages to check for duplicates
+        assistant_messages = [msg for msg in state["messages"] if msg["role"] == "assistant"]
+        
+        # Check if we've seen this exact SQL before
+        duplicate_detected = False
+        if current_sql and len(assistant_messages) > 0:
+            for prev_msg in assistant_messages[-2:]:  # Check last 2 assistant messages
+                prev_sql_matches = re.findall(sql_pattern, prev_msg["content"], re.DOTALL | re.IGNORECASE)
+                if prev_sql_matches:
+                    prev_sql = prev_sql_matches[-1].strip()
+                    if current_sql == prev_sql:
+                        duplicate_detected = True
+                        logger.info("Detected duplicate SQL query, marking as final to terminate")
+                        break
+        
+        # Update state with the new message
         state["messages"].append({
             "role": "assistant",
             "content": response_content,
@@ -140,25 +245,19 @@ def sql_generation_node(state: AgentState) -> AgentState:
         
         if sql_matches:
             # Extract the SQL query
-            state["current_sql_query"] = sql_matches[-1].strip()  # Use the last SQL block
+            state["current_sql_query"] = current_sql
             
-            # Only set final_sql if explicitly stated as final or after successful execution
-            if any(phrase in response_content.lower() for phrase in 
-                   ["this is the final", "final query", "final sql", "query is complete", "this completes"]):
+            # Set final_sql if explicitly stated as final, duplicate detected, or max iterations approaching
+            if (any(phrase in response_content.lower() for phrase in 
+                   ["this is the final", "final query", "final sql", "query is complete", "this completes"]) or
+                duplicate_detected or
+                state["current_iteration"] >= state["max_iterations"] - 1):
                 state["final_sql"] = state["current_sql_query"]
-                logger.info(f"Agent marked SQL as final: {state['final_sql'][:50]}...")
-            
-            # Check for duplicate responses
-            if len(state["messages"]) >= 3:
-                prev_assistant_msgs = [msg for msg in state["messages"][-3:] if msg["role"] == "assistant"]
-                if len(prev_assistant_msgs) >= 2:
-                    if prev_assistant_msgs[-1]["content"] == prev_assistant_msgs[-2]["content"]:
-                        logger.info("Detected duplicate response, marking as final")
-                        state["final_sql"] = state["current_sql_query"]
+                logger.info(f"Agent marked SQL as final: {state['final_sql'][:50]}... (duplicate: {duplicate_detected}, iteration: {state['current_iteration']})")
         else:
             state["current_sql_query"] = None
             
-        logger.info(f"LLM generated response for iteration {state['current_iteration']}")
+        logger.info(f"LLM generated response for iteration {state['current_iteration']} using {connection_type} syntax")
         logger.debug(f"Generated SQL: {state.get('current_sql_query', 'None')}")
         logger.debug(f"Final SQL set: {bool(state.get('final_sql'))}")
         
@@ -298,6 +397,20 @@ def decide_next_step(state: AgentState) -> str:
         logger.info(f"Stopping due to error: {state['error_message']}")
         return END
     
+    # If we have final SQL, we should stop after this execution attempt
+    if state.get("final_sql"):
+        last_message = state["messages"][-1] if state["messages"] else {}
+        last_role = last_message.get("role", "")
+        
+        if last_role == "tool_result":
+            # Final SQL was executed, end regardless of success/failure
+            logger.info("Final SQL execution completed, ending workflow")
+            return END
+        elif last_role == "assistant":
+            # Final SQL needs to be executed
+            logger.info("Executing final SQL")
+            return "execute_sql"
+    
     # Determine next step based on current state
     last_message = state["messages"][-1] if state["messages"] else {}
     last_role = last_message.get("role", "")
@@ -312,24 +425,43 @@ def decide_next_step(state: AgentState) -> str:
         # Tool executed, check if we should continue
         tool_content = last_message.get("content", "").lower()
         
-        # If we have final SQL and successful execution, we're done
-        if state.get("final_sql") and "successfully" in tool_content:
-            logger.info("Final SQL executed successfully, ending workflow")
+        # Count consecutive failures to prevent infinite retry loops
+        consecutive_failures = 0
+        for msg in reversed(state["messages"]):
+            if msg["role"] == "tool_result":
+                if "failed" in msg["content"].lower() or "error" in msg["content"].lower():
+                    consecutive_failures += 1
+                else:
+                    break
+            elif msg["role"] == "assistant":
+                break
+        
+        # If we've had too many consecutive failures, stop
+        if consecutive_failures >= 3:
+            logger.info(f"Too many consecutive failures ({consecutive_failures}), ending workflow")
             return END
         
-        # If query failed badly, ask LLM to fix it
+        # If query failed, ask LLM to fix it (but increment iteration)
         if "error" in tool_content or "failed" in tool_content:
+            # Check for database connection errors that can't be fixed by SQL changes
+            if any(db_error in tool_content for db_error in [
+                "unread result found", "connection", "timeout", "access denied", 
+                "database not found", "table doesn't exist"
+            ]):
+                logger.info(f"Database connection or configuration error detected, ending workflow: {tool_content}")
+                return END
+            
             logger.info(f"SQL failed, continuing to iteration {state['current_iteration'] + 1}")
             state["current_iteration"] += 1
             return "generate_sql"
         
-        # If query succeeded but we don't have final SQL, ask LLM if this is what user wanted
-        if "successfully" in tool_content and not state.get("final_sql"):
-            logger.info(f"SQL succeeded but not marked final, continuing to iteration {state['current_iteration'] + 1}")
-            state["current_iteration"] += 1
-            return "generate_sql"
+        # If query succeeded, we're done (successful execution always ends)
+        if "successfully" in tool_content:
+            logger.info("SQL executed successfully, ending workflow")
+            return END
         
-        # Default continue
+        # Default continue with incremented iteration
+        logger.info(f"Continuing to iteration {state['current_iteration'] + 1}")
         state["current_iteration"] += 1
         return "generate_sql"
     else:

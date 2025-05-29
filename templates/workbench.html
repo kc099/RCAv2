@@ -518,7 +518,74 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js"></script>
 
 <!-- Include Plotly.js for visualizations -->
-<script src="https://cdn.plot.ly/plotly-2.23.0.min.js"></script>
+<script>
+// Enhanced Plotly.js loading with multiple fallback CDNs
+(function() {
+    if (typeof Plotly !== 'undefined') {
+        console.log('Plotly.js already loaded');
+        return;
+    }
+    
+    const cdnSources = [
+        'https://cdn.plot.ly/plotly-3.0.1.min.js',                    // Official Plotly CDN (latest)
+        'https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js',  // Cloudflare CDN (stable)
+        'https://unpkg.com/plotly.js-dist@2.27.0/plotly.js'           // unpkg CDN (fallback)
+    ];
+    
+    let currentIndex = 0;
+    
+    function loadPlotlyFromCDN() {
+        if (currentIndex >= cdnSources.length) {
+            console.error('All Plotly.js CDN sources failed to load');
+            return;
+        }
+        
+        const script = document.createElement('script');
+        script.src = cdnSources[currentIndex];
+        script.charset = 'utf-8';
+        
+        script.onload = function() {
+            console.log('Plotly.js loaded successfully from:', cdnSources[currentIndex]);
+            // Dispatch custom event to notify dashboard that Plotly is ready
+            document.dispatchEvent(new CustomEvent('plotlyLoaded'));
+        };
+        
+        script.onerror = function() {
+            console.warn('Failed to load Plotly.js from:', cdnSources[currentIndex]);
+            currentIndex++;
+            loadPlotlyFromCDN(); // Try next CDN
+        };
+        
+        document.head.appendChild(script);
+    }
+    
+    loadPlotlyFromCDN();
+})();
+</script>
+<script>
+// Verify Plotly.js loaded and log status
+document.addEventListener('DOMContentLoaded', function() {
+    function checkPlotly() {
+        if (typeof Plotly !== 'undefined') {
+            console.log('Plotly.js loaded successfully:', Plotly.BUILD || 'version info unavailable');
+        } else {
+            console.error('Plotly.js failed to load after DOM ready');
+        }
+    }
+    
+    // Check immediately
+    checkPlotly();
+    
+    // Also listen for the custom plotlyLoaded event
+    document.addEventListener('plotlyLoaded', function() {
+        console.log('Plotly.js loading confirmed via custom event');
+        checkPlotly();
+    });
+    
+    // Final check after a delay
+    setTimeout(checkPlotly, 2000);
+});
+</script>
 
 <!-- Include the application scripts -->
 <script src="{% static 'js/notebook.js' %}"></script>
