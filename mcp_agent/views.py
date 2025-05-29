@@ -7,10 +7,11 @@ from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.core.exceptions import ValidationError
-from core.models import DatabaseConnection, SQLNotebook
-from core.db_handlers import get_schema_for_connection
+from core.models import DatabaseConnection, SQLNotebook, SQLCell
+from core.db_handlers import get_schema_for_connection, execute_query, get_mysql_schema_info, format_schema_for_llm
 from .models import AgentConversation, ChatMessage
 from .agent_logic import get_or_create_agent_for_user, AgentState
+from core.views import get_database_schema
 
 logger = logging.getLogger(__name__)
 
@@ -62,32 +63,60 @@ def text_to_sql_agent_view(request):
                 "error": "Query field is required"
             }, status=400)
             
-        if not connection_id or not notebook_id:
+        if not notebook_id:
             return JsonResponse({
                 "success": False,
-                "error": "connection_id and notebook_id are required"
+                "error": "notebook_id is required"
             }, status=400)
         
-        # Get or validate database connection and notebook
+        # Get notebook first - support both UUID and ID
         try:
-            db_connection = DatabaseConnection.objects.get(
-                id=connection_id,
-                user=request.user
-            )
-            notebook = SQLNotebook.objects.get(
-                id=notebook_id,
-                user=request.user
-            )
-        except DatabaseConnection.DoesNotExist:
-            return JsonResponse({
-                "success": False,
-                "error": "Database connection not found or access denied"
-            }, status=404)
+            # First try to find by UUID (new approach)
+            try:
+                notebook = SQLNotebook.objects.get(
+                    uuid=notebook_id,
+                    user=request.user
+                )
+            except (SQLNotebook.DoesNotExist, ValueError):
+                # Fallback to ID lookup (for backwards compatibility)
+                notebook = SQLNotebook.objects.get(
+                    id=notebook_id,
+                    user=request.user
+                )
         except SQLNotebook.DoesNotExist:
             return JsonResponse({
                 "success": False,
                 "error": "Notebook not found or access denied"
             }, status=404)
+        except Exception as e:
+            return JsonResponse({
+                "success": False,
+                "error": f"Error finding notebook: {str(e)}"
+            }, status=400)
+        
+        # Handle connection_id - auto-detect from notebook if needed
+        if connection_id == 'auto' or not connection_id:
+            # Try to get connection from notebook
+            if notebook.database_connection:
+                db_connection = notebook.database_connection
+                connection_id = db_connection.id
+            else:
+                return JsonResponse({
+                    "success": False,
+                    "error": "No database connection found for this notebook"
+                }, status=400)
+        else:
+            # Get specific connection
+            try:
+                db_connection = DatabaseConnection.objects.get(
+                    id=connection_id,
+                    user=request.user
+                )
+            except DatabaseConnection.DoesNotExist:
+                return JsonResponse({
+                    "success": False,
+                    "error": "Database connection not found or access denied"
+                }, status=404)
         
         # Get or create conversation
         if conversation_id:
@@ -111,7 +140,20 @@ def text_to_sql_agent_view(request):
         
         # Get database schema
         try:
-            database_schema = get_schema_for_connection(db_connection)
+            # Use the same schema approach that works in the workbench
+            # Get connection info from the notebook, not the connection model
+            connection_info = notebook.get_connection_info()
+            if not connection_info:
+                return JsonResponse({
+                    "success": False,
+                    "error": "No connection information available for this notebook"
+                }, status=400)
+                
+            schemas = get_database_schema(connection_info)
+            
+            # Format the schema for the LLM (convert from list of dicts to string)
+            database_schema = format_schema_for_llm(schemas)
+            
             if not database_schema:
                 return JsonResponse({
                     "success": False,
@@ -121,7 +163,7 @@ def text_to_sql_agent_view(request):
             logger.error(f"Error getting schema for connection {connection_id}: {str(e)}")
             return JsonResponse({
                 "success": False,
-                "error": "Error retrieving database schema"
+                "error": f"Error retrieving database schema: {str(e)}"
             }, status=500)
         
         # Load conversation history

@@ -9,6 +9,7 @@ import time
 import json
 from .encryption import encrypt_dict, decrypt_dict
 import uuid
+import logging
 
 
 class UserManager(BaseUserManager):

@@ -6,11 +6,12 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // Global variables for tracking cells and editors
-const cells = [];
-const editors = {};
-const cellResults = {}; // Store cell execution results
+let cells = [];
+let editors = {};
+let cellResults = {}; // Store cell execution results
 let pendingImport = null; // Track pending imports
 let autoSaveInterval = null; // Track auto-save interval
+let notebookId = null; // Current notebook ID
 
 /**
  * Initialize the SQL notebook
@@ -58,6 +59,25 @@ function initNotebook() {
     if (!autoSaveInterval) {
         autoSaveInterval = setInterval(autoSaveNotebook, 300000); // Save every 5 minutes
     }
+    
+    // Mark notebook as initialized
+    window.notebookInitialized = true;
+    
+    // Expose key functions globally for agent integration
+    window.addNewCell = addNewCell;
+    window.renderCell = renderCell;
+    window.updateCellContent = updateCellContent;
+    window.executeCell = executeCell;
+    window.getCsrfToken = getCsrfToken;
+    window.cells = cells;
+    window.editors = editors;
+    
+    console.log('Notebook functions exposed globally:', {
+        addNewCell: typeof window.addNewCell,
+        renderCell: typeof window.renderCell,
+        updateCellContent: typeof window.updateCellContent,
+        executeCell: typeof window.executeCell
+    });
 }
 
 /**

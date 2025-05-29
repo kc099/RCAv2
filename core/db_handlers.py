@@ -79,6 +79,7 @@ def get_mysql_schema_info(connection_info):
         
         # Get all tables in the current database
         current_db = connection_info.get('database')
+        
         if current_db:
             cursor.execute(
                 """SELECT table_schema AS 'schema', 
@@ -138,7 +139,7 @@ def execute_query(connection_info, query):
     Returns (success: bool, result: Any)
     """
     try:
-        connection_type = connection_info.get('connection_type', 'mysql').lower()
+        connection_type = connection_info.get('type', 'mysql').lower()
         
         if connection_type == 'mysql':
             result = execute_mysql_query(connection_info, query)
@@ -159,11 +160,12 @@ def get_schema_for_connection(db_connection):
     """
     try:
         connection_config = db_connection.get_connection_config()
-        connection_type = connection_config.get('connection_type', 'mysql').lower()
+        connection_type = connection_config.get('type', 'mysql').lower()
         
         if connection_type == 'mysql':
             schemas = get_mysql_schema_info(connection_config)
-            return format_schema_for_llm(schemas)
+            formatted_schema = format_schema_for_llm(schemas)
+            return formatted_schema
         elif connection_type in ['redshift', 'postgresql']:
             return "Schema retrieval for Redshift/PostgreSQL not yet implemented"
         else:
@@ -218,45 +220,70 @@ def execute_redshift_query(connection_info, query):
     """Execute query in Redshift database (placeholder function)"""
     # This is a placeholder function until proper Redshift implementation is added
     raise Exception("Redshift connection not yet implemented. Please use MySQL connection instead.")
-    
-    # Real implementation would look something like this:
-    # try:
-    #     conn = psycopg2.connect(
-    #         host=connection_info.get('host'),
-    #         port=connection_info.get('port'),
-    #         dbname=connection_info.get('database'),
-    #         user=connection_info.get('username'),
-    #         password=connection_info.get('password')
-    #     )
-    #     
-    #     cursor = conn.cursor()
-    #     start_time = time.time()
-    #     cursor.execute(query)
-        
-    #     # Handle different query types
-    #     if query.strip().upper().startswith(('SELECT', 'SHOW')):
-    #         columns = [desc[0] for desc in cursor.description]
-    #         rows = []
-    #         for row in cursor.fetchall():
-    #             rows.append(dict(zip(columns, row)))
-                
-    #         result = {
-    #             'columns': columns,
-    #             'rows': rows,
-    #             'rowCount': len(rows),
-    #             'time': time.time() - start_time
-    #         }
-    #     else:
-    #         # For INSERT, UPDATE, DELETE, etc.
-    #         conn.commit()  # Commit the transaction
-    #         result = {
-    #             'rowCount': cursor.rowcount,
-    #             'time': time.time() - start_time
-    #         }
-        
-    #     cursor.close()
-    #     conn.close()
-    #     return result
-        
-    # except psycopg2.Error as err:
-    #     raise Exception(f"Redshift Error: {err}")
+
+def get_sample_schema_for_testing():
+    """
+    Provide a sample schema for testing when actual database connection fails
+    This is a temporary fallback to allow agent testing
+    """
+    return """Database: testdata
+=====================
+
+Table: customers (table)
+Rows: ~1000
+Columns:
+  - customer_id: int (PRIMARY KEY) NOT NULL
+  - first_name: varchar(50) NOT NULL
+  - last_name: varchar(50) NOT NULL
+  - email: varchar(100) (UNIQUE)
+  - phone: varchar(20)
+  - address: text
+  - city: varchar(50)
+  - state: varchar(20)
+  - zip_code: varchar(10)
+  - created_at: datetime NOT NULL
+  - updated_at: datetime
+
+Table: products (table)
+Rows: ~500
+Columns:
+  - product_id: int (PRIMARY KEY) NOT NULL
+  - product_name: varchar(100) NOT NULL
+  - category_id: int (INDEX) NOT NULL
+  - price: decimal(10,2) NOT NULL
+  - description: text
+  - stock_quantity: int NOT NULL
+  - created_at: datetime NOT NULL
+  - updated_at: datetime
+
+Table: categories (table)
+Rows: ~20
+Columns:
+  - category_id: int (PRIMARY KEY) NOT NULL
+  - category_name: varchar(50) NOT NULL
+  - description: text
+  - created_at: datetime NOT NULL
+
+Table: orders (table)
+Rows: ~2000
+Columns:
+  - order_id: int (PRIMARY KEY) NOT NULL
+  - customer_id: int (INDEX) NOT NULL
+  - order_date: datetime NOT NULL
+  - total_amount: decimal(10,2) NOT NULL
+  - status: varchar(20) NOT NULL
+  - shipping_address: text
+  - created_at: datetime NOT NULL
+  - updated_at: datetime
+
+Table: order_details (table)
+Rows: ~5000
+Columns:
+  - detail_id: int (PRIMARY KEY) NOT NULL
+  - order_id: int (INDEX) NOT NULL
+  - product_id: int (INDEX) NOT NULL
+  - quantity: int NOT NULL
+  - unit_price: decimal(10,2) NOT NULL
+  - total_price: decimal(10,2) NOT NULL
+
+"""

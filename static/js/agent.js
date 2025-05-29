@@ -335,6 +335,38 @@ class TextToSQLAgent {
     init() {
         this.setupEventListeners();
         this.createAgentUI();
+        
+        // Wait for notebook to be ready before finalizing setup
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => this.finalizeSetup());
+        } else {
+            this.finalizeSetup();
+        }
+    }
+    
+    finalizeSetup() {
+        // Wait for notebook functions to be available
+        const checkNotebookReady = () => {
+            if (typeof addNewCell === 'function' && typeof renderCell === 'function') {
+                console.log('Notebook functions available, agent fully initialized');
+                return true;
+            }
+            return false;
+        };
+        
+        if (!checkNotebookReady()) {
+            // Wait up to 3 seconds for notebook to initialize
+            let attempts = 0;
+            const waitForNotebook = setInterval(() => {
+                attempts++;
+                if (checkNotebookReady() || attempts > 30) {
+                    clearInterval(waitForNotebook);
+                    if (attempts > 30) {
+                        console.warn('Notebook functions not available after waiting');
+                    }
+                }
+            }, 100);
+        }
     }
 
     setupEventListeners() {
@@ -343,7 +375,14 @@ class TextToSQLAgent {
         
         // Natural language query submission
         document.addEventListener('click', (e) => {
-            if (e.target.id === 'submitNlQuery' || e.target.closest('#submitNlQuery')) {
+            const isSubmitButton = 
+                e.target.id === 'submitNlQuery' || 
+                e.target.closest('#submitNlQuery') ||
+                e.target.classList.contains('nl-submit') ||
+                e.target.closest('.nl-submit') ||
+                (e.target.textContent && e.target.textContent.includes('Ask Agent'));
+                
+            if (isSubmitButton) {
                 e.preventDefault();
                 self.handleNlQuerySubmit();
             }
@@ -351,7 +390,7 @@ class TextToSQLAgent {
 
         // Enter key submission for natural language input
         document.addEventListener('keydown', (e) => {
-            if (e.target.id === 'nlQueryInput' && e.key === 'Enter' && !e.shiftKey) {
+            if ((e.target.id === 'nlQueryInput' || e.target.classList.contains('nl-input')) && e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 self.handleNlQuerySubmit();
             }
@@ -383,63 +422,115 @@ class TextToSQLAgent {
         // This function will be called to enhance the existing workbench UI
         // We'll look for existing elements and enhance them rather than create from scratch
         this.enhanceExistingUI();
+        
+        // Retry enhancement after a delay if elements weren't found
+        setTimeout(() => {
+            this.enhanceExistingUI();
+        }, 1000);
     }
 
     enhanceExistingUI() {
-        console.log('Enhancing existing UI...');
-        
         // Find the existing natural language input area in workbench
-        const existingNlInput = document.querySelector('input[placeholder*="natural language"], input[placeholder*="Describe your query"], .nl-input');
+        let existingNlInput = document.querySelector('input[placeholder*="natural language"], input[placeholder*="Describe your query"], .nl-input');
         
-        console.log('Found input:', existingNlInput);
+        // If not found, try a broader search
+        if (!existingNlInput) {
+            existingNlInput = document.querySelector('#nlQueryInput');
+        }
         
         if (existingNlInput) {
             // Enhance the existing input
             existingNlInput.id = 'nlQueryInput';
             
-            // Find the submit button - it should be OUTSIDE the nl-input-wrapper, not inside
-            const nlInputContainer = existingNlInput.closest('.nl-input-container');
-            let submitButton = null;
+            // Find the submit button
+            let submitButton = document.getElementById('submitNlQuery');
             
-            if (nlInputContainer) {
-                // Look for button outside the input wrapper (not the @ button inside)
-                submitButton = nlInputContainer.querySelector('.nl-submit');
-                if (!submitButton) {
-                    // Look for any button that's a direct child of nl-input-container but not in nl-input-wrapper
-                    const buttons = nlInputContainer.querySelectorAll('button');
-                    for (const btn of buttons) {
-                        if (!btn.closest('.nl-input-wrapper')) {
-                            submitButton = btn;
-                            break;
+            if (!submitButton) {
+                const nlInputContainer = existingNlInput.closest('.nl-input-container');
+                if (nlInputContainer) {
+                    submitButton = nlInputContainer.querySelector('.nl-submit');
+                    if (!submitButton) {
+                        const buttons = nlInputContainer.querySelectorAll('button');
+                        for (const btn of buttons) {
+                            if (!btn.closest('.nl-input-wrapper')) {
+                                submitButton = btn;
+                                break;
+                            }
                         }
                     }
                 }
             }
             
-            console.log('Found submit button:', submitButton);
+            if (!submitButton) {
+                const allButtons = document.querySelectorAll('button');
+                for (const btn of allButtons) {
+                    if (btn.textContent.includes('Ask Agent') || btn.textContent.includes('Generate SQL')) {
+                        submitButton = btn;
+                        break;
+                    }
+                }
+            }
             
             if (submitButton) {
-                // Update existing submit button (keep original styling)
+                // Update existing submit button
                 submitButton.innerHTML = '<i class="fas fa-robot"></i> Ask Agent';
                 submitButton.className = 'nl-submit';
                 submitButton.id = 'submitNlQuery';
+                
+                // Add a direct click event listener as backup
+                submitButton.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    this.handleNlQuerySubmit();
+                });
             } else {
-                console.warn('Submit button not found in expected location');
+                // Create a new button as fallback
+                const nlContainer = existingNlInput.closest('.nl-input-container');
+                if (nlContainer) {
+                    const newButton = document.createElement('button');
+                    newButton.innerHTML = '<i class="fas fa-robot"></i> Ask Agent';
+                    newButton.className = 'nl-submit';
+                    newButton.id = 'submitNlQuery';
+                    newButton.type = 'button';
+                    
+                    const inputRow = nlContainer.querySelector('.nl-input-row');
+                    if (inputRow) {
+                        inputRow.appendChild(newButton);
+                    } else {
+                        nlContainer.appendChild(newButton);
+                    }
+                    
+                    newButton.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        this.handleNlQuerySubmit();
+                    });
+                }
+            }
+        }
+
+        // Create and add the conversation area to the DOM
+        if (!document.getElementById('agentResponseArea')) {
+            console.log('Creating conversation area...');
+            const agentArea = this.createAgentResponseArea();
+            
+            // Find a good place to insert the conversation area
+            const nlContainer = document.querySelector('.nl-input-container');
+            if (nlContainer) {
+                // Insert after the natural language input container
+                nlContainer.parentNode.insertBefore(agentArea, nlContainer.nextSibling);
+            } else {
+                // Fallback: add to the main content area
+                const mainContent = document.querySelector('#main-content, .main-content, .content, main');
+                if (mainContent) {
+                    mainContent.appendChild(agentArea);
+                } else {
+                    // Last resort: add to body
+                    document.body.appendChild(agentArea);
+                }
             }
             
-            console.log('Enhanced submit button:', submitButton);
-            
-            // The agent response area is now in the HTML template, just show it when needed
-            const agentArea = document.getElementById('agentResponseArea');
-            if (agentArea) {
-                console.log('Found agent response area in template');
-            } else {
-                console.warn('Agent response area not found in template');
-            }
-            
-            console.log('Agent UI enhanced successfully');
-        } else {
-            console.error('Could not find natural language input field');
+            // Initially hide the conversation area
+            agentArea.style.display = 'none';
+            console.log('Conversation area created and added to DOM');
         }
     }
 
@@ -474,9 +565,16 @@ class TextToSQLAgent {
     }
 
     async handleNlQuerySubmit() {
-        const nlInput = document.getElementById('nlQueryInput');
-        const query = nlInput.value.trim();
+        console.log('=== Agent Query Submission Started ===');
         
+        const nlInput = document.getElementById('nlQueryInput');
+        if (!nlInput) {
+            console.error('Natural language input field not found');
+            this.showError('Input field not found');
+            return;
+        }
+        
+        const query = nlInput.value.trim();
         if (!query) {
             this.showError('Please enter a natural language query');
             return;
@@ -487,56 +585,82 @@ class TextToSQLAgent {
             return;
         }
 
-        // Get current context
+        console.log('Query to process:', query);
+
+        // Get current context with enhanced debugging
         const currentNotebookId = this.getCurrentNotebookId();
         const activeConnectionId = this.getActiveConnectionId();
         
-        console.log('Agent context:', { currentNotebookId, activeConnectionId, query });
+        console.log('Agent context evaluation:');
+        console.log('- Raw notebook ID:', currentNotebookId);
+        console.log('- Raw connection ID:', activeConnectionId);
+        console.log('- Query:', query);
+        
+        // More detailed debugging
+        if (!currentNotebookId) {
+            console.error('❌ No notebook ID detected');
+            console.log('Debug info:');
+            console.log('- window.currentNotebookId:', window.currentNotebookId);
+            console.log('- notebook container:', document.getElementById('notebook-container'));
+            console.log('- container dataset:', document.getElementById('notebook-container')?.dataset);
+        } else {
+            console.log('✅ Notebook ID found:', currentNotebookId);
+        }
+        
+        if (!activeConnectionId) {
+            console.error('❌ No connection ID detected');
+            console.log('Debug info:');
+            console.log('- window.activeConnectionId:', window.activeConnectionId);
+            console.log('- sessionStorage db_connection_id:', sessionStorage.getItem('db_connection_id'));
+            console.log('- localStorage activeConnectionId:', localStorage.getItem('activeConnectionId'));
+        } else {
+            console.log('✅ Connection ID found:', activeConnectionId);
+        }
         
         if (!currentNotebookId || !activeConnectionId) {
-            this.showError('Please ensure you have a notebook open and a database connection active');
+            const errorMsg = 'Missing context: ' + 
+                (!currentNotebookId ? 'notebook ID ' : '') + 
+                (!activeConnectionId ? 'connection ID' : '');
+            console.error('❌ Context validation failed:', errorMsg);
+            this.showError(`Agent context error: ${errorMsg}. Please refresh the page.`);
             return;
         }
+
+        // Set processing flag early to prevent multiple submissions
+        this.isProcessing = true;
 
         // Show the conversation area
         this.showConversationArea();
 
-        // Combine user query with referenced cells content
-        let enhancedQuery = query;
-        const referencedCellsText = this.cellReferenceManager.getReferencedCellsText();
-        if (referencedCellsText) {
-            enhancedQuery += referencedCellsText;
-            console.log('Enhanced query with referenced cells:', enhancedQuery);
-        }
-
         // Create a new notebook cell for the agent work
+        console.log('Creating agent cell...');
         const cellId = await this.createAgentCell(query);
         if (!cellId) {
-            this.showError('Failed to create notebook cell');
+            console.error('❌ Failed to create agent cell');
+            this.showError('Failed to create notebook cell. Please try adding a cell manually first.');
+            this.isProcessing = false; // Reset processing flag
             return;
         }
-
-        this.isProcessing = true;
-        this.updateCellContent(cellId, '-- Processing your request...', 'Processing...');
+        
+        console.log('✅ Created agent cell:', cellId);
+        this.updateCellContent(cellId, '-- Processing your request...');
 
         try {
-            // Clear input and selected cells
+            // Clear input
             nlInput.value = '';
-            this.cellReferenceManager.clearSelectedCells();
-            this.cellReferenceManager.closeDropdown();
             
-            // Add user message to conversation immediately (show original query without cell references)
+            // Add user message to conversation immediately
             this.addMessageToConversation('user', query);
             
-            // Prepare request data with enhanced query
+            // Prepare request data
             const requestData = {
-                query: enhancedQuery, // Send enhanced query with cell references
+                query: query,
                 connection_id: activeConnectionId,
                 notebook_id: currentNotebookId,
                 conversation_id: this.currentConversationId
             };
 
-            console.log('Sending request to agent:', requestData);
+            console.log('📤 Sending request to agent:', requestData);
 
             // Send to agent endpoint
             const response = await fetch('/mcp_agent/text-to-sql/', {
@@ -548,8 +672,16 @@ class TextToSQLAgent {
                 body: JSON.stringify(requestData)
             });
 
+            console.log('📥 Agent response status:', response.status);
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('❌ Agent response error:', response.status, errorText);
+                throw new Error(`Server error ${response.status}: ${errorText}`);
+            }
+
             const result = await response.json();
-            console.log('Agent response:', result);
+            console.log('✅ Agent response parsed:', result);
 
             if (result.success) {
                 // Update conversation ID
@@ -573,29 +705,54 @@ class TextToSQLAgent {
                 }
 
                 if (finalSQL) {
-                    console.log('Final SQL extracted:', finalSQL);
+                    console.log('✅ Final SQL extracted:', finalSQL.substring(0, 100) + '...');
                     
-                    // Update the cell with the final SQL
-                    this.updateCellContent(cellId, finalSQL, 'Generated SQL');
+                    // Update the cell with the final SQL (don't override the name)
+                    await this.updateCellContent(cellId, finalSQL);
                     
-                    // Show success status
-                    this.showSuccessStatus('SQL generated successfully! Click "Run" to execute it.');
+                    // Execute the cell using the global function to show results in UI
+                    setTimeout(() => {
+                        if (typeof executeCell === 'function') {
+                            console.log('Executing cell using global executeCell function');
+                            executeCell(cellId);
+                            this.showSuccessStatus(`SQL generated and executed in ${result.iterations || 1} iterations.`);
+                        } else {
+                            console.warn('executeCell function not available, trying manual execution');
+                            // Fallback to manual execution
+                            this.executeCellAndGetResults(cellId).then(executionResult => {
+                                if (executionResult.success) {
+                                    this.showSuccessStatus(`SQL generated and executed in ${result.iterations || 1} iterations. Returned ${executionResult.rowCount} rows.`);
+                                } else {
+                                    this.showWarning(`SQL generated successfully, but UI execution failed: ${executionResult.error}`);
+                                }
+                            });
+                        }
+                    }, 500); // Small delay to ensure cell is fully updated
                 } else {
-                    this.updateCellContent(cellId, '-- No SQL was generated', 'No Result');
-                    this.showWarningStatus('Agent completed but no SQL was generated.');
+                    console.warn('⚠️ No SQL generated by agent');
+                    this.updateCellContent(cellId, '-- No SQL generated', 'No SQL Generated');
+                    this.showError('Agent did not generate valid SQL');
                 }
+                
+                // Show warning if any
+                if (result.warning) {
+                    this.showWarning(result.warning);
+                }
+                
             } else {
-                console.error('Agent error:', result.error);
+                console.error('❌ Agent request failed:', result.error);
                 this.updateCellContent(cellId, `-- Error: ${result.error}`, 'Error');
-                this.showError(`Agent error: ${result.error}`);
+                this.showError(result.error || 'Agent request failed');
             }
 
         } catch (error) {
-            console.error('Error calling agent:', error);
+            console.error('❌ Agent request error:', error);
             this.updateCellContent(cellId, `-- Network error: ${error.message}`, 'Error');
-            this.showError(`Network error: ${error.message}`);
+            this.showError('Network error: ' + error.message);
         } finally {
             this.isProcessing = false;
+            this.hideProcessingStatus();
+            console.log('=== Agent Query Submission Completed ===');
         }
     }
 
@@ -604,6 +761,39 @@ class TextToSQLAgent {
         if (agentArea) {
             agentArea.style.display = 'block';
         }
+    }
+
+    /**
+     * Create a clean cell name from user query
+     * @param {string} query - The user's natural language query
+     * @param {number} maxLength - Maximum length for the cell name (default 50)
+     * @returns {string} - Clean cell name
+     */
+    createCellNameFromQuery(query, maxLength = 50) {
+        if (!query || typeof query !== 'string') {
+            return 'Agent Query';
+        }
+        
+        // Clean up the query text
+        let cleanQuery = query
+            .trim()
+            .replace(/\s+/g, ' ') // Replace multiple whitespace with single space
+            .replace(/[^\w\s-_.,()?!]/g, '') // Remove special characters except common ones
+            .replace(/^(describe|show|get|find|list|select|count|sum|avg|max|min)\s+/i, '') // Remove common SQL verbs
+            .trim();
+        
+        // If the query is too long, truncate and add ellipsis
+        if (cleanQuery.length > maxLength) {
+            cleanQuery = cleanQuery.substring(0, maxLength - 3) + '...';
+        }
+        
+        // Ensure we have some meaningful text
+        if (cleanQuery.length < 3) {
+            return 'Agent Query';
+        }
+        
+        // Capitalize first letter
+        return cleanQuery.charAt(0).toUpperCase() + cleanQuery.slice(1);
     }
 
     async createAgentCell(query) {
@@ -616,8 +806,13 @@ class TextToSQLAgent {
 
             console.log('Creating cell for notebook:', notebookUuid);
 
+            // Create cell name from query
+            const cellName = this.createCellNameFromQuery(query);
+
             // Use the global addNewCell function if available
             if (typeof addNewCell === 'function') {
+                console.log('Using addNewCell function');
+                
                 // Get current cell count
                 const currentCells = document.querySelectorAll('.sql-cell').length;
                 
@@ -627,7 +822,7 @@ class TextToSQLAgent {
                 // Wait for the cell to be created
                 let attempts = 0;
                 let cellId = null;
-                while (attempts < 10 && !cellId) {
+                while (attempts < 20 && !cellId) {
                     await new Promise(resolve => setTimeout(resolve, 100));
                     const newCells = document.querySelectorAll('.sql-cell');
                     if (newCells.length > currentCells) {
@@ -639,13 +834,14 @@ class TextToSQLAgent {
                 }
                 
                 if (cellId) {
-                    await this.updateCellName(cellId, `Agent: ${query.substring(0, 30)}...`);
+                    await this.updateCellName(cellId, cellName);
                     console.log('Created cell using addNewCell:', cellId);
                     return cellId;
                 }
             }
 
             // Fallback to direct API call
+            console.log('Falling back to API call for cell creation');
             const response = await fetch(`/api/notebooks/${notebookUuid}/add-cell/`, {
                 method: 'POST',
                 headers: {
@@ -670,7 +866,7 @@ class TextToSQLAgent {
                     renderCell({
                         id: result.cell_id,
                         order: result.order,
-                        name: `Agent: ${query.substring(0, 30)}...`,
+                        name: cellName,
                         query: "-- Processing your request...",
                         result: null,
                         is_executed: false
@@ -690,17 +886,13 @@ class TextToSQLAgent {
 
     async updateCellContent(cellId, sql, name) {
         try {
-            console.log('Updating cell:', cellId, 'with SQL:', sql.substring(0, 50) + '...');
-
             // Update the CodeMirror editor directly if it exists
             if (typeof editors !== 'undefined' && editors[cellId]) {
                 editors[cellId].setValue(sql);
-                console.log('Updated CodeMirror editor for cell:', cellId);
             }
 
             // Update via existing function if available
             if (typeof updateCellContent === 'function' && updateCellContent !== this.updateCellContent) {
-                // Use the global notebook function
                 updateCellContent(cellId, sql);
             } else {
                 // Fallback to direct API call
@@ -715,7 +907,6 @@ class TextToSQLAgent {
 
                 const updateResult = await updateResponse.json();
                 if (!updateResult.success) {
-                    console.error('Failed to update cell content:', updateResult.error);
                     return;
                 }
             }
@@ -724,22 +915,17 @@ class TextToSQLAgent {
             if (name) {
                 await this.updateCellName(cellId, name);
             }
-
-            console.log('Updated cell:', cellId, 'with SQL length:', sql.length);
         } catch (error) {
-            console.error('Error updating cell:', error);
+            // Silent error handling
         }
     }
 
     async updateCellName(cellId, name) {
         try {
-            console.log('Updating cell name:', cellId, 'to:', name);
-
             // Update the name in the UI first
             const nameElement = document.querySelector(`.cell-name[data-cell-id="${cellId}"]`);
             if (nameElement) {
                 nameElement.textContent = name;
-                console.log('Updated name element in UI');
             }
 
             // Update in the cells array if it exists
@@ -1219,19 +1405,26 @@ class TextToSQLAgent {
     getCurrentNotebookId() {
         console.log('Getting current notebook ID...');
         
-        // Try to get from global variables
-        if (typeof window.currentNotebookId !== 'undefined' && window.currentNotebookId) {
-            console.log('Found notebook ID from global variable:', window.currentNotebookId);
-            return window.currentNotebookId;
+        // Try to get notebook UUID from container first (this is what the API expects)
+        const container = document.getElementById('notebook-container');
+        if (container && container.dataset.notebookId) {
+            console.log('Found notebook UUID from container:', container.dataset.notebookId);
+            return container.dataset.notebookId;
         }
         
-        // Try to extract from URL
+        // Try to extract from URL (should be UUID)
         const urlParts = window.location.pathname.split('/');
-        const notebookIndex = urlParts.indexOf('workbench');
-        if (notebookIndex !== -1 && urlParts[notebookIndex + 1]) {
-            const notebookId = parseInt(urlParts[notebookIndex + 1]);
-            console.log('Found notebook ID from URL:', notebookId);
-            return notebookId;
+        const workbenchIndex = urlParts.indexOf('workbench');
+        if (workbenchIndex !== -1 && urlParts[workbenchIndex + 1]) {
+            const notebookIdFromUrl = urlParts[workbenchIndex + 1];
+            console.log('Found notebook ID from URL:', notebookIdFromUrl);
+            return notebookIdFromUrl;
+        }
+        
+        // Try to get from global variables (this might be the database ID - use as fallback)
+        if (typeof window.currentNotebookId !== 'undefined' && window.currentNotebookId) {
+            console.log('Found notebook ID from global variable (fallback):', window.currentNotebookId);
+            return window.currentNotebookId;
         }
         
         console.warn('Could not find notebook ID');
@@ -1241,21 +1434,51 @@ class TextToSQLAgent {
     getActiveConnectionId() {
         console.log('Getting active connection ID...');
         
-        // Try to get from global variables
-        if (typeof window.activeConnectionId !== 'undefined' && window.activeConnectionId) {
-            console.log('Found connection ID from global variable:', window.activeConnectionId);
-            return window.activeConnectionId;
+        // Try session storage first (set by Django view)
+        const sessionConnectionId = sessionStorage.getItem('db_connection_id');
+        if (sessionConnectionId && sessionConnectionId !== 'null' && sessionConnectionId !== '') {
+            const id = parseInt(sessionConnectionId);
+            if (!isNaN(id)) {
+                console.log('Found connection ID from sessionStorage:', id);
+                return id;
+            }
         }
         
-        // Try to get from data attributes or stored values
+        // Try global variable
+        if (typeof window.activeConnectionId !== 'undefined' && window.activeConnectionId && window.activeConnectionId !== null) {
+            const id = parseInt(window.activeConnectionId);
+            if (!isNaN(id)) {
+                console.log('Found connection ID from global variable:', id);
+                return id;
+            }
+        }
+        
+        // Try connection select element
         const connectionSelect = document.querySelector('select[name="connection"], #connectionSelect');
-        if (connectionSelect && connectionSelect.value) {
-            const connectionId = parseInt(connectionSelect.value);
-            console.log('Found connection ID from select:', connectionId);
-            return connectionId;
+        if (connectionSelect && connectionSelect.value && connectionSelect.value !== '') {
+            const id = parseInt(connectionSelect.value);
+            if (!isNaN(id)) {
+                console.log('Found connection ID from select:', id);
+                return id;
+            }
         }
         
-        console.warn('Could not find active connection ID');
+        // Try local storage
+        const localConnectionId = localStorage.getItem('activeConnectionId');
+        if (localConnectionId && localConnectionId !== 'null' && localConnectionId !== '') {
+            const id = parseInt(localConnectionId);
+            if (!isNaN(id)) {
+                console.log('Found connection ID from localStorage:', id);
+                return id;
+            }
+        }
+        
+        console.warn('Could not find active connection ID. Checked:');
+        console.warn('- sessionStorage db_connection_id:', sessionStorage.getItem('db_connection_id'));
+        console.warn('- window.activeConnectionId:', window.activeConnectionId);
+        console.warn('- connection select value:', connectionSelect?.value);
+        console.warn('- localStorage activeConnectionId:', localStorage.getItem('activeConnectionId'));
+        
         return null;
     }
 
@@ -1273,6 +1496,15 @@ class TextToSQLAgent {
             
         return cookieValue || '';
     }
+    
+    // Test function for debugging
+    testAgentSubmit() {
+        const nlInput = document.getElementById('nlQueryInput');
+        if (nlInput) {
+            nlInput.value = 'show all customers';
+        }
+        this.handleNlQuerySubmit();
+    }
 }
 
 // Initialize the agent when DOM is loaded
@@ -1281,6 +1513,27 @@ document.addEventListener('DOMContentLoaded', function() {
     try {
         window.textToSQLAgent = new TextToSQLAgent();
         console.log('TextToSQLAgent initialized successfully');
+        
+        // Add immediate fallback event listener to ensure button works
+        const submitButton = document.getElementById('submitNlQuery');
+        console.log('Submit button found:', submitButton);
+        
+        if (submitButton) {
+            // Remove any existing listeners and add a direct one
+            submitButton.onclick = function(e) {
+                e.preventDefault();
+                console.log('Direct button click detected!');
+                if (window.textToSQLAgent) {
+                    window.textToSQLAgent.handleNlQuerySubmit();
+                } else {
+                    console.error('TextToSQLAgent not available');
+                }
+            };
+            console.log('Direct onclick handler attached');
+        } else {
+            console.error('Submit button not found!');
+        }
+        
     } catch (error) {
         console.error('Error initializing TextToSQLAgent:', error);
     }

@@ -256,6 +256,9 @@ def sql_generation_node(state: AgentState) -> AgentState:
                 logger.info(f"Agent marked SQL as final: {state['final_sql'][:50]}... (duplicate: {duplicate_detected}, iteration: {state['current_iteration']})")
         else:
             state["current_sql_query"] = None
+            # If no SQL found and we're not on the first iteration, this might be a termination message
+            if state["current_iteration"] > 0:
+                logger.warning(f"No SQL found in assistant response for iteration {state['current_iteration']}")
             
         logger.info(f"LLM generated response for iteration {state['current_iteration']} using {connection_type} syntax")
         logger.debug(f"Generated SQL: {state.get('current_sql_query', 'None')}")
@@ -282,18 +285,41 @@ def execute_sql_tool(state: AgentState) -> AgentState:
                 id=state["active_connection_id"],
                 user=state["user_object"]
             )
-            notebook = SQLNotebook.objects.get(
-                id=state["current_notebook_id"],
-                user=state["user_object"]
-            )
-        except (DatabaseConnection.DoesNotExist, SQLNotebook.DoesNotExist) as e:
-            state["error_message"] = f"Database connection or notebook not found: {str(e)}"
+            
+            # Handle both UUID and integer ID for notebook lookup
+            notebook_id = state["current_notebook_id"]
+            try:
+                # First try to find by UUID (new approach)
+                try:
+                    notebook = SQLNotebook.objects.get(
+                        uuid=notebook_id,
+                        user=state["user_object"]
+                    )
+                except (SQLNotebook.DoesNotExist, ValueError):
+                    # Fallback to ID lookup (for backwards compatibility)
+                    notebook = SQLNotebook.objects.get(
+                        id=notebook_id,
+                        user=state["user_object"]
+                    )
+            except SQLNotebook.DoesNotExist:
+                state["error_message"] = f"Notebook not found or access denied: {notebook_id}"
+                state["should_continue"] = False
+                return state
+                
+        except (DatabaseConnection.DoesNotExist, ValueError) as e:
+            state["error_message"] = f"Database connection not found: {str(e)}"
             state["should_continue"] = False
             return state
             
         # Execute SQL query 
-        connection_config = db_connection.get_connection_config()
-        success, result = execute_query(connection_config, state["current_sql_query"])
+        # Use the same working connection approach as the main agent view
+        connection_info = notebook.get_connection_info()
+        if not connection_info:
+            state["error_message"] = "No connection information available for this notebook"
+            state["should_continue"] = False
+            return state
+            
+        success, result = execute_query(connection_info, state["current_sql_query"])
         
         logger.debug(f"SQL execution result - Success: {success}, Type: {type(result)}")
         
@@ -446,23 +472,31 @@ def decide_next_step(state: AgentState) -> str:
             # Check for database connection errors that can't be fixed by SQL changes
             if any(db_error in tool_content for db_error in [
                 "unread result found", "connection", "timeout", "access denied", 
-                "database not found", "table doesn't exist"
+                "database not found", "table doesn't exist", "notebook not found"
             ]):
                 logger.info(f"Database connection or configuration error detected, ending workflow: {tool_content}")
                 return END
             
-            logger.info(f"SQL failed, continuing to iteration {state['current_iteration'] + 1}")
+            # Increment iteration before continuing
             state["current_iteration"] += 1
+            logger.info(f"SQL failed, continuing to iteration {state['current_iteration']}")
             return "generate_sql"
         
-        # If query succeeded, we're done (successful execution always ends)
+        # If query succeeded, continue for potential refinement (unless marked as final)
         if "successfully" in tool_content:
-            logger.info("SQL executed successfully, ending workflow")
-            return END
+            # Only end if explicitly marked as final, otherwise continue iterating
+            if state.get("final_sql"):
+                logger.info("SQL executed successfully and marked as final, ending workflow")
+                return END
+            else:
+                # Continue to allow for refinement and improvement
+                state["current_iteration"] += 1
+                logger.info(f"SQL executed successfully, continuing to iteration {state['current_iteration']} for potential refinement")
+                return "generate_sql"
         
         # Default continue with incremented iteration
-        logger.info(f"Continuing to iteration {state['current_iteration'] + 1}")
         state["current_iteration"] += 1
+        logger.info(f"Continuing to iteration {state['current_iteration']}")
         return "generate_sql"
     else:
         # Default to SQL generation

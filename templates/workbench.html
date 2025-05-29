@@ -4,6 +4,9 @@
 {% block title %}MySQL Database - Datasage Workbench{% endblock %}
 
 {% block content %}
+<!-- CSRF Token for AJAX requests -->
+{% csrf_token %}
+
 <div class="workbench-layout">
     <!-- Header with database info -->
     <header class="workbench-header">
@@ -134,6 +137,18 @@
                             // Global variables for agent context
                             window.currentNotebookId = {% if notebook.id %}{{ notebook.id }}{% else %}null{% endif %};
                             window.activeConnectionId = {% if connection_id %}{{ connection_id }}{% else %}null{% endif %};
+                            
+                            // Debug: log the connection_id value from Django
+                            console.log('Django connection_id value:', '{{ connection_id|default:"NONE" }}');
+                            console.log('window.activeConnectionId set to:', window.activeConnectionId);
+                            
+                            // Also set in sessionStorage for the agent to find
+                            if (window.activeConnectionId) {
+                                sessionStorage.setItem('db_connection_id', window.activeConnectionId);
+                                console.log('Set sessionStorage db_connection_id to:', window.activeConnectionId);
+                            } else {
+                                console.log('No connection_id available to set in sessionStorage');
+                            }
                             /* jshint ignore:end */
                             /* eslint-enable */
                         </script>
@@ -357,18 +372,102 @@
         const funcs = {
             addQueryExample: typeof window.addQueryExample === 'function',
             activateTab: typeof window.activateTab === 'function',
-            importCellToExamples: typeof importCellToExamples === 'function'
+            importCellToExamples: typeof importCellToExamples === 'function',
+            addNewCell: typeof addNewCell === 'function',
+            renderCell: typeof renderCell === 'function'
         };
         console.log('Integration check:', funcs);
         return funcs;
     }
-    
-    // Wait short period then check integration
-    setTimeout(checkIntegration, 1000);
 </script>
 
-<!-- Include simple-query-examples.js script -->
+<!-- Include simple-query-examples.js script first -->
 <script src="{% static 'js/simple-query-examples.js' %}"></script>
+
+<!-- CodeMirror for SQL editing -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js"></script>
+
+<!-- Include Plotly.js for visualizations -->
+<script>
+// Enhanced Plotly.js loading with multiple fallback CDNs
+(function() {
+    if (typeof Plotly !== 'undefined') {
+        console.log('Plotly.js already loaded');
+        return;
+    }
+    
+    const cdnSources = [
+        'https://cdn.plot.ly/plotly-3.0.1.min.js',                    // Official Plotly CDN (latest)
+        'https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js',  // Cloudflare CDN (stable)
+        'https://unpkg.com/plotly.js-dist@2.27.0/plotly.js'           // unpkg CDN (fallback)
+    ];
+    
+    let currentIndex = 0;
+    
+    function loadPlotlyFromCDN() {
+        if (currentIndex >= cdnSources.length) {
+            console.error('All Plotly.js CDN sources failed to load');
+            return;
+        }
+        
+        const script = document.createElement('script');
+        script.src = cdnSources[currentIndex];
+        script.charset = 'utf-8';
+        
+        script.onload = function() {
+            console.log('Plotly.js loaded successfully from:', cdnSources[currentIndex]);
+            // Dispatch custom event to notify dashboard that Plotly is ready
+            document.dispatchEvent(new CustomEvent('plotlyLoaded'));
+        };
+        
+        script.onerror = function() {
+            console.warn('Failed to load Plotly.js from:', cdnSources[currentIndex]);
+            currentIndex++;
+            loadPlotlyFromCDN(); // Try next CDN
+        };
+        
+        document.head.appendChild(script);
+    }
+    
+    loadPlotlyFromCDN();
+})();
+</script>
+
+<script>
+// Verify Plotly.js loaded and log status
+document.addEventListener('DOMContentLoaded', function() {
+    function checkPlotly() {
+        if (typeof Plotly !== 'undefined') {
+            console.log('Plotly.js loaded successfully:', Plotly.BUILD || 'version info unavailable');
+        } else {
+            console.error('Plotly.js failed to load after DOM ready');
+        }
+    }
+    
+    // Check immediately
+    checkPlotly();
+    
+    // Also listen for the custom plotlyLoaded event
+    document.addEventListener('plotlyLoaded', function() {
+        console.log('Plotly.js loading confirmed via custom event');
+        checkPlotly();
+    });
+    
+    // Final check after a delay
+    setTimeout(checkPlotly, 2000);
+});
+</script>
+
+<!-- Include the application scripts in proper order -->
+<script src="{% static 'js/notebook.js' %}"></script>
+<script src="{% static 'js/schema_explorer.js' %}"></script>
+<script src="{% static 'js/dashboard.js' %}"></script>
+
+<!-- Include agent.js last to ensure all dependencies are loaded -->
+<script src="{% static 'js/agent.js' %}"></script>
+
 <script>
     // Function to get CSRF token for AJAX requests
     function getCsrfToken() {
@@ -376,6 +475,30 @@
     }
     
     document.addEventListener('DOMContentLoaded', function() {
+        // Wait short period then check integration
+        setTimeout(() => {
+            checkIntegration();
+            
+            // Test agent functionality
+            if (window.textToSQLAgent) {
+                console.log('Agent available for testing');
+                
+                // Test connection detection
+                const connectionId = window.textToSQLAgent.getActiveConnectionId();
+                const notebookId = window.textToSQLAgent.getCurrentNotebookId();
+                console.log('Agent context test:');
+                console.log('- Connection ID:', connectionId);
+                console.log('- Notebook ID:', notebookId);
+                
+                if (!connectionId) {
+                    console.warn('No connection ID detected - agent may not work properly');
+                }
+                if (!notebookId) {
+                    console.warn('No notebook ID detected - agent may not work properly');
+                }
+            }
+        }, 1000);
+        
         // Sidebar resizing functionality
         const schemaBrowser = document.querySelector('.schema-browser');
         const resizer = document.querySelector('.resizer');
@@ -513,101 +636,9 @@
                 });
             });
         }
-        
-        // Initialize SQL Notebook if we're on the notebook view
-        const notebookContainer = document.getElementById('notebook-container');
-        if (notebookContainer) {
-            const notebookId = notebookContainer.dataset.notebookId;
-            const cellsDataElement = document.getElementById('cells-data');
-            if (cellsDataElement && notebookId) {
-                const cellsData = JSON.parse(cellsDataElement.textContent || '[]');
-                const notebook = new SQLNotebook(notebookId, 'notebook-container');
-                notebook.loadCells(cellsData);
-            }
-        }
     });
 </script>
 
-<!-- CodeMirror for SQL editing -->
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js"></script>
-
-<!-- Include Plotly.js for visualizations -->
-<script>
-// Enhanced Plotly.js loading with multiple fallback CDNs
-(function() {
-    if (typeof Plotly !== 'undefined') {
-        console.log('Plotly.js already loaded');
-        return;
-    }
-    
-    const cdnSources = [
-        'https://cdn.plot.ly/plotly-3.0.1.min.js',                    // Official Plotly CDN (latest)
-        'https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.27.0/plotly.min.js',  // Cloudflare CDN (stable)
-        'https://unpkg.com/plotly.js-dist@2.27.0/plotly.js'           // unpkg CDN (fallback)
-    ];
-    
-    let currentIndex = 0;
-    
-    function loadPlotlyFromCDN() {
-        if (currentIndex >= cdnSources.length) {
-            console.error('All Plotly.js CDN sources failed to load');
-            return;
-        }
-        
-        const script = document.createElement('script');
-        script.src = cdnSources[currentIndex];
-        script.charset = 'utf-8';
-        
-        script.onload = function() {
-            console.log('Plotly.js loaded successfully from:', cdnSources[currentIndex]);
-            // Dispatch custom event to notify dashboard that Plotly is ready
-            document.dispatchEvent(new CustomEvent('plotlyLoaded'));
-        };
-        
-        script.onerror = function() {
-            console.warn('Failed to load Plotly.js from:', cdnSources[currentIndex]);
-            currentIndex++;
-            loadPlotlyFromCDN(); // Try next CDN
-        };
-        
-        document.head.appendChild(script);
-    }
-    
-    loadPlotlyFromCDN();
-})();
-</script>
-<script>
-// Verify Plotly.js loaded and log status
-document.addEventListener('DOMContentLoaded', function() {
-    function checkPlotly() {
-        if (typeof Plotly !== 'undefined') {
-            console.log('Plotly.js loaded successfully:', Plotly.BUILD || 'version info unavailable');
-        } else {
-            console.error('Plotly.js failed to load after DOM ready');
-        }
-    }
-    
-    // Check immediately
-    checkPlotly();
-    
-    // Also listen for the custom plotlyLoaded event
-    document.addEventListener('plotlyLoaded', function() {
-        console.log('Plotly.js loading confirmed via custom event');
-        checkPlotly();
-    });
-    
-    // Final check after a delay
-    setTimeout(checkPlotly, 2000);
-});
-</script>
-
-<!-- Include the application scripts -->
-<script src="{% static 'js/notebook.js' %}"></script>
-<script src="{% static 'js/schema_explorer.js' %}"></script>
-<script src="{% static 'js/dashboard.js' %}"></script>
-<script src="{% static 'js/agent.js' %}"></script>
 {% endblock %}
 
 {% block extra_css %}

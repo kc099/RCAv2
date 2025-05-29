@@ -302,10 +302,30 @@ def workbench(request):
     
     # Get the connection ID for the agent
     connection_id = None
-    if database_connection:
-        connection_id = database_connection.id
-    elif db_connection_id:
-        connection_id = db_connection_id
+    if notebook.database_connection:
+        connection_id = notebook.database_connection.id
+    else:
+        # Try to get from session storage
+        session_connection_id = request.session.get('db_connection_id')
+        if session_connection_id:
+            # Verify the connection exists and belongs to this user
+            try:
+                db_conn = DatabaseConnection.objects.get(id=session_connection_id, user=request.user)
+                connection_id = db_conn.id
+            except DatabaseConnection.DoesNotExist:
+                # Session connection doesn't exist, try to find any available connection
+                available_connections = DatabaseConnection.objects.filter(user=request.user)
+                if available_connections.exists():
+                    connection_id = available_connections.first().id
+                    request.session['db_connection_id'] = connection_id
+                    request.session.modified = True
+        else:
+            # No session connection, try to find any available connection for this user
+            available_connections = DatabaseConnection.objects.filter(user=request.user)
+            if available_connections.exists():
+                connection_id = available_connections.first().id
+                request.session['db_connection_id'] = connection_id
+                request.session.modified = True
     
     context = {
         'connection': connection_info,
@@ -563,7 +583,31 @@ def open_notebook(request, notebook_uuid):
     cells_json = json.dumps(cells_data)
     
     # Get the connection ID for the agent
-    connection_id = notebook.database_connection.id if notebook.database_connection else None
+    connection_id = None
+    if notebook.database_connection:
+        connection_id = notebook.database_connection.id
+    else:
+        # Try to get from session storage
+        session_connection_id = request.session.get('db_connection_id')
+        if session_connection_id:
+            # Verify the connection exists and belongs to this user
+            try:
+                db_conn = DatabaseConnection.objects.get(id=session_connection_id, user=request.user)
+                connection_id = db_conn.id
+            except DatabaseConnection.DoesNotExist:
+                # Session connection doesn't exist, try to find any available connection
+                available_connections = DatabaseConnection.objects.filter(user=request.user)
+                if available_connections.exists():
+                    connection_id = available_connections.first().id
+                    request.session['db_connection_id'] = connection_id
+                    request.session.modified = True
+        else:
+            # No session connection, try to find any available connection for this user
+            available_connections = DatabaseConnection.objects.filter(user=request.user)
+            if available_connections.exists():
+                connection_id = available_connections.first().id
+                request.session['db_connection_id'] = connection_id
+                request.session.modified = True
     
     context = {
         'notebook': notebook,
