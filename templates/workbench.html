@@ -481,14 +481,9 @@ document.addEventListener('DOMContentLoaded', function() {
             
             // Test agent functionality
             if (window.textToSQLAgent) {
-                console.log('Agent available for testing');
-                
                 // Test connection detection
                 const connectionId = window.textToSQLAgent.getActiveConnectionId();
                 const notebookId = window.textToSQLAgent.getCurrentNotebookId();
-                console.log('Agent context test:');
-                console.log('- Connection ID:', connectionId);
-                console.log('- Notebook ID:', notebookId);
                 
                 if (!connectionId) {
                     console.warn('No connection ID detected - agent may not work properly');

@@ -185,10 +185,6 @@ def sql_generation_node(state: AgentState) -> AgentState:
         # Add system message with dynamic connection type
         system_prompt = get_system_prompt(state["database_schema"], state["user_nl_query"], connection_type, state["current_iteration"])
         
-        logger.debug(f"System prompt length: {len(system_prompt)} characters")
-        logger.debug(f"Database schema length: {len(state['database_schema'])} characters")
-        logger.debug(f"Connection type: {connection_type}")
-        
         # Add conversation history
         for msg in state["messages"]:
             if msg["role"] in ["user", "assistant"]:

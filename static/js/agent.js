@@ -348,7 +348,6 @@ class TextToSQLAgent {
         // Wait for notebook functions to be available
         const checkNotebookReady = () => {
             if (typeof addNewCell === 'function' && typeof renderCell === 'function') {
-                console.log('Notebook functions available, agent fully initialized');
                 return true;
             }
             return false;
@@ -509,7 +508,6 @@ class TextToSQLAgent {
 
         // Create and add the conversation area to the DOM
         if (!document.getElementById('agentResponseArea')) {
-            console.log('Creating conversation area...');
             const agentArea = this.createAgentResponseArea();
             
             // Find a good place to insert the conversation area
@@ -530,7 +528,6 @@ class TextToSQLAgent {
             
             // Initially hide the conversation area
             agentArea.style.display = 'none';
-            console.log('Conversation area created and added to DOM');
         }
     }
 
@@ -565,8 +562,6 @@ class TextToSQLAgent {
     }
 
     async handleNlQuerySubmit() {
-        console.log('=== Agent Query Submission Started ===');
-        
         const nlInput = document.getElementById('nlQueryInput');
         if (!nlInput) {
             console.error('Natural language input field not found');
@@ -585,43 +580,15 @@ class TextToSQLAgent {
             return;
         }
 
-        console.log('Query to process:', query);
-
-        // Get current context with enhanced debugging
+        // Get current context
         const currentNotebookId = this.getCurrentNotebookId();
         const activeConnectionId = this.getActiveConnectionId();
-        
-        console.log('Agent context evaluation:');
-        console.log('- Raw notebook ID:', currentNotebookId);
-        console.log('- Raw connection ID:', activeConnectionId);
-        console.log('- Query:', query);
-        
-        // More detailed debugging
-        if (!currentNotebookId) {
-            console.error('❌ No notebook ID detected');
-            console.log('Debug info:');
-            console.log('- window.currentNotebookId:', window.currentNotebookId);
-            console.log('- notebook container:', document.getElementById('notebook-container'));
-            console.log('- container dataset:', document.getElementById('notebook-container')?.dataset);
-        } else {
-            console.log('✅ Notebook ID found:', currentNotebookId);
-        }
-        
-        if (!activeConnectionId) {
-            console.error('❌ No connection ID detected');
-            console.log('Debug info:');
-            console.log('- window.activeConnectionId:', window.activeConnectionId);
-            console.log('- sessionStorage db_connection_id:', sessionStorage.getItem('db_connection_id'));
-            console.log('- localStorage activeConnectionId:', localStorage.getItem('activeConnectionId'));
-        } else {
-            console.log('✅ Connection ID found:', activeConnectionId);
-        }
         
         if (!currentNotebookId || !activeConnectionId) {
             const errorMsg = 'Missing context: ' + 
                 (!currentNotebookId ? 'notebook ID ' : '') + 
                 (!activeConnectionId ? 'connection ID' : '');
-            console.error('❌ Context validation failed:', errorMsg);
+            console.error('Context validation failed:', errorMsg);
             this.showError(`Agent context error: ${errorMsg}. Please refresh the page.`);
             return;
         }
@@ -633,16 +600,14 @@ class TextToSQLAgent {
         this.showConversationArea();
 
         // Create a new notebook cell for the agent work
-        console.log('Creating agent cell...');
         const cellId = await this.createAgentCell(query);
         if (!cellId) {
-            console.error('❌ Failed to create agent cell');
+            console.error('Failed to create agent cell');
             this.showError('Failed to create notebook cell. Please try adding a cell manually first.');
             this.isProcessing = false; // Reset processing flag
             return;
         }
         
-        console.log('✅ Created agent cell:', cellId);
         this.updateCellContent(cellId, '-- Processing your request...');
 
         try {
@@ -660,8 +625,6 @@ class TextToSQLAgent {
                 conversation_id: this.currentConversationId
             };
 
-            console.log('📤 Sending request to agent:', requestData);
-
             // Send to agent endpoint
             const response = await fetch('/mcp_agent/text-to-sql/', {
                 method: 'POST',
@@ -671,17 +634,14 @@ class TextToSQLAgent {
                 },
                 body: JSON.stringify(requestData)
             });
-
-            console.log('📥 Agent response status:', response.status);
             
             if (!response.ok) {
                 const errorText = await response.text();
-                console.error('❌ Agent response error:', response.status, errorText);
+                console.error('Agent response error:', response.status, errorText);
                 throw new Error(`Server error ${response.status}: ${errorText}`);
             }
 
             const result = await response.json();
-            console.log('✅ Agent response parsed:', result);
 
             if (result.success) {
                 // Update conversation ID
@@ -705,15 +665,12 @@ class TextToSQLAgent {
                 }
 
                 if (finalSQL) {
-                    console.log('✅ Final SQL extracted:', finalSQL.substring(0, 100) + '...');
-                    
                     // Update the cell with the final SQL (don't override the name)
                     await this.updateCellContent(cellId, finalSQL);
                     
                     // Execute the cell using the global function to show results in UI
                     setTimeout(() => {
                         if (typeof executeCell === 'function') {
-                            console.log('Executing cell using global executeCell function');
                             executeCell(cellId);
                             this.showSuccessStatus(`SQL generated and executed in ${result.iterations || 1} iterations.`);
                         } else {
@@ -729,7 +686,7 @@ class TextToSQLAgent {
                         }
                     }, 500); // Small delay to ensure cell is fully updated
                 } else {
-                    console.warn('⚠️ No SQL generated by agent');
+                    console.warn('No SQL generated by agent');
                     this.updateCellContent(cellId, '-- No SQL generated', 'No SQL Generated');
                     this.showError('Agent did not generate valid SQL');
                 }
@@ -740,19 +697,18 @@ class TextToSQLAgent {
                 }
                 
             } else {
-                console.error('❌ Agent request failed:', result.error);
+                console.error('Agent request failed:', result.error);
                 this.updateCellContent(cellId, `-- Error: ${result.error}`, 'Error');
                 this.showError(result.error || 'Agent request failed');
             }
 
         } catch (error) {
-            console.error('❌ Agent request error:', error);
+            console.error('Agent request error:', error);
             this.updateCellContent(cellId, `-- Network error: ${error.message}`, 'Error');
             this.showError('Network error: ' + error.message);
         } finally {
             this.isProcessing = false;
             this.hideProcessingStatus();
-            console.log('=== Agent Query Submission Completed ===');
         }
     }
 
@@ -804,15 +760,11 @@ class TextToSQLAgent {
                 return null;
             }
 
-            console.log('Creating cell for notebook:', notebookUuid);
-
             // Create cell name from query
             const cellName = this.createCellNameFromQuery(query);
 
             // Use the global addNewCell function if available
             if (typeof addNewCell === 'function') {
-                console.log('Using addNewCell function');
-                
                 // Get current cell count
                 const currentCells = document.querySelectorAll('.sql-cell').length;
                 
@@ -835,13 +787,11 @@ class TextToSQLAgent {
                 
                 if (cellId) {
                     await this.updateCellName(cellId, cellName);
-                    console.log('Created cell using addNewCell:', cellId);
                     return cellId;
                 }
             }
 
             // Fallback to direct API call
-            console.log('Falling back to API call for cell creation');
             const response = await fetch(`/api/notebooks/${notebookUuid}/add-cell/`, {
                 method: 'POST',
                 headers: {
@@ -853,8 +803,6 @@ class TextToSQLAgent {
 
             const result = await response.json();
             if (result.success) {
-                console.log('Created cell via API:', result.cell_id);
-                
                 // Manually render the cell if needed
                 if (typeof renderCell === 'function') {
                     // Remove any placeholder empty state
@@ -964,13 +912,11 @@ class TextToSQLAgent {
         // Try to get from the notebook container
         const notebookContainer = document.getElementById('notebook-container');
         if (notebookContainer && notebookContainer.dataset.notebookId) {
-            console.log('Found notebook UUID from container:', notebookContainer.dataset.notebookId);
             return notebookContainer.dataset.notebookId;
         }
 
         // Try to get from global notebookId variable
         if (typeof notebookId !== 'undefined' && notebookId) {
-            console.log('Found notebook UUID from global variable:', notebookId);
             return notebookId;
         }
 
@@ -978,7 +924,6 @@ class TextToSQLAgent {
         const urlParts = window.location.pathname.split('/');
         const workbenchIndex = urlParts.indexOf('workbench');
         if (workbenchIndex !== -1 && urlParts[workbenchIndex + 1]) {
-            console.log('Found notebook UUID from URL:', urlParts[workbenchIndex + 1]);
             return urlParts[workbenchIndex + 1];
         }
 
@@ -1403,12 +1348,9 @@ class TextToSQLAgent {
     }
 
     getCurrentNotebookId() {
-        console.log('Getting current notebook ID...');
-        
         // Try to get notebook UUID from container first (this is what the API expects)
         const container = document.getElementById('notebook-container');
         if (container && container.dataset.notebookId) {
-            console.log('Found notebook UUID from container:', container.dataset.notebookId);
             return container.dataset.notebookId;
         }
         
@@ -1417,13 +1359,11 @@ class TextToSQLAgent {
         const workbenchIndex = urlParts.indexOf('workbench');
         if (workbenchIndex !== -1 && urlParts[workbenchIndex + 1]) {
             const notebookIdFromUrl = urlParts[workbenchIndex + 1];
-            console.log('Found notebook ID from URL:', notebookIdFromUrl);
             return notebookIdFromUrl;
         }
         
         // Try to get from global variables (this might be the database ID - use as fallback)
         if (typeof window.currentNotebookId !== 'undefined' && window.currentNotebookId) {
-            console.log('Found notebook ID from global variable (fallback):', window.currentNotebookId);
             return window.currentNotebookId;
         }
         
@@ -1432,14 +1372,11 @@ class TextToSQLAgent {
     }
 
     getActiveConnectionId() {
-        console.log('Getting active connection ID...');
-        
         // Try session storage first (set by Django view)
         const sessionConnectionId = sessionStorage.getItem('db_connection_id');
         if (sessionConnectionId && sessionConnectionId !== 'null' && sessionConnectionId !== '') {
             const id = parseInt(sessionConnectionId);
             if (!isNaN(id)) {
-                console.log('Found connection ID from sessionStorage:', id);
                 return id;
             }
         }
@@ -1448,7 +1385,6 @@ class TextToSQLAgent {
         if (typeof window.activeConnectionId !== 'undefined' && window.activeConnectionId && window.activeConnectionId !== null) {
             const id = parseInt(window.activeConnectionId);
             if (!isNaN(id)) {
-                console.log('Found connection ID from global variable:', id);
                 return id;
             }
         }
@@ -1458,7 +1394,6 @@ class TextToSQLAgent {
         if (connectionSelect && connectionSelect.value && connectionSelect.value !== '') {
             const id = parseInt(connectionSelect.value);
             if (!isNaN(id)) {
-                console.log('Found connection ID from select:', id);
                 return id;
             }
         }
@@ -1468,17 +1403,11 @@ class TextToSQLAgent {
         if (localConnectionId && localConnectionId !== 'null' && localConnectionId !== '') {
             const id = parseInt(localConnectionId);
             if (!isNaN(id)) {
-                console.log('Found connection ID from localStorage:', id);
                 return id;
             }
         }
         
-        console.warn('Could not find active connection ID. Checked:');
-        console.warn('- sessionStorage db_connection_id:', sessionStorage.getItem('db_connection_id'));
-        console.warn('- window.activeConnectionId:', window.activeConnectionId);
-        console.warn('- connection select value:', connectionSelect?.value);
-        console.warn('- localStorage activeConnectionId:', localStorage.getItem('activeConnectionId'));
-        
+        console.warn('Could not find active connection ID');
         return null;
     }
 
@@ -1509,27 +1438,22 @@ class TextToSQLAgent {
 
 // Initialize the agent when DOM is loaded
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded, initializing TextToSQLAgent...');
     try {
         window.textToSQLAgent = new TextToSQLAgent();
-        console.log('TextToSQLAgent initialized successfully');
         
         // Add immediate fallback event listener to ensure button works
         const submitButton = document.getElementById('submitNlQuery');
-        console.log('Submit button found:', submitButton);
         
         if (submitButton) {
             // Remove any existing listeners and add a direct one
             submitButton.onclick = function(e) {
                 e.preventDefault();
-                console.log('Direct button click detected!');
                 if (window.textToSQLAgent) {
                     window.textToSQLAgent.handleNlQuerySubmit();
                 } else {
                     console.error('TextToSQLAgent not available');
                 }
             };
-            console.log('Direct onclick handler attached');
         } else {
             console.error('Submit button not found!');
         }
