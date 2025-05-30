@@ -11,10 +11,16 @@ let notebookUUID = null;
  * Initialize the knowledge graph visualization
  */
 function initKnowledgeGraph() {
+    console.log('Initializing knowledge graph...');
+    
     // Get notebook ID
     notebookUUID = getNotebookUUID();
     
+    console.log('Knowledge graph notebook UUID:', notebookUUID);
+    console.log('Current URL:', window.location.pathname);
+    
     if (!notebookUUID) {
+        console.error('Cannot determine notebook ID for knowledge graph');
         showGraphError("Cannot determine notebook ID");
         return;
     }
@@ -25,6 +31,8 @@ function initKnowledgeGraph() {
         console.error("Knowledge graph container not found");
         return;
     }
+    
+    console.log('Knowledge graph container found, proceeding with initialization');
     
     // Create loading indicator
     showLoadingIndicator();
@@ -449,12 +457,40 @@ function showGraphMessage(message) {
 }
 
 /**
- * Get notebook UUID from URL
+ * Get notebook UUID from URL or DOM
  */
 function getNotebookUUID() {
+    // First try to get from the notebook container's data attribute (for workbench notebooks)
+    const notebookContainer = document.getElementById('notebook-container');
+    if (notebookContainer && notebookContainer.dataset.notebookId) {
+        console.log('Knowledge graph: Found notebook UUID from container data attribute:', notebookContainer.dataset.notebookId);
+        return notebookContainer.dataset.notebookId;
+    }
+
+    // Try to get from global notebookId variable
+    if (typeof notebookId !== 'undefined' && notebookId) {
+        console.log('Knowledge graph: Found notebook UUID from global variable:', notebookId);
+        return notebookId;
+    }
+
+    // Try to extract from URL (for notebooks opened via /notebooks/<uuid>/)
     const path = window.location.pathname;
     const matches = path.match(/\/notebooks\/([a-f0-9-]+)\//);
-    return matches ? matches[1] : null;
+    if (matches && matches[1]) {
+        console.log('Knowledge graph: Found notebook UUID from URL:', matches[1]);
+        return matches[1];
+    }
+
+    // Fallback: try to extract from workbench URL if it has UUID after workbench/
+    const urlParts = window.location.pathname.split('/');
+    const workbenchIndex = urlParts.indexOf('workbench');
+    if (workbenchIndex !== -1 && urlParts[workbenchIndex + 1]) {
+        console.log('Knowledge graph: Found notebook UUID from workbench URL:', urlParts[workbenchIndex + 1]);
+        return urlParts[workbenchIndex + 1];
+    }
+
+    console.warn('Knowledge graph: Could not determine notebook UUID from any source');
+    return null;
 }
 
 /**

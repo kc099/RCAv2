@@ -187,9 +187,13 @@ def sql_generation_node(state: AgentState) -> AgentState:
         
         # Add conversation history
         for msg in state["messages"]:
-            if msg["role"] in ["user", "assistant"]:
+            if msg["role"] in ["user", "assistant", "tool_result"]:
+                # Map 'tool_result' to 'user' for Anthropic, so the LLM sees the result as user feedback
+                role = msg["role"]
+                if role == "tool_result":
+                    role = "user"
                 messages.append({
-                    "role": msg["role"],
+                    "role": role,
                     "content": msg["content"]
                 })
         
