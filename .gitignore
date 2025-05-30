@@ -87,3 +87,5 @@ coverage.xml
 # Project specific
 migrations/
 !migrations/__init__.py
+
+staticfiles/
