@@ -4,7 +4,7 @@ from django.views.decorators.http import require_POST
 from django.urls import reverse
 from django.http import HttpResponse, JsonResponse
 from django.conf import settings
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, login, logout, get_user_model
 from django.contrib.auth.models import User
 from django.db import models
 import time
