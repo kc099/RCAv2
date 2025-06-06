@@ -143,14 +143,18 @@ def validate_connection(request):
         print(f"Attempting to connect to MySQL server: {host}:{port} database: {database} user: {username}")
         
         try:
+            # Import configuration from db_handlers
+            from .db_handlers import get_db_config
+            
             # Validate the connection
+            db_config = get_db_config()
             conn = mysql.connector.connect(
                 host=host,
                 port=int(port),
                 database=database,
                 user=username,  # Note: mysql.connector uses 'user' not 'username'
                 password=password,
-                connection_timeout=5
+                connection_timeout=db_config['connection_timeout']
             )
             
             # Test the connection by executing a simple query
@@ -717,8 +721,16 @@ def api_execute_cell(request, cell_id):
     
     start_time = time.time()
     try:
-        # Execute query with the connection info
-        result = execute_sql_query(connection_info, query)
+        # Get query timeout from request (optional)
+        query_timeout = request.POST.get('timeout')
+        if query_timeout:
+            try:
+                query_timeout = int(query_timeout)
+            except (ValueError, TypeError):
+                query_timeout = None
+        
+        # Execute query with the connection info and timeout
+        result = execute_sql_query(connection_info, query, query_timeout)
         # print(result)
         execution_time = time.time() - start_time
         
@@ -880,17 +892,17 @@ def api_update_notebook_title(request, notebook_uuid):
         })
 
 # Helper function to execute SQL queries
-def execute_sql_query(connection_info, query):
+def execute_sql_query(connection_info, query, query_timeout=None):
     """Execute SQL query based on database type"""
     connection_type = connection_info.get('type', '').lower()
     
     if connection_type == 'mysql':
-        return execute_mysql_query(connection_info, query)
+        return execute_mysql_query(connection_info, query, query_timeout)
     elif connection_type == 'redshift':
         return execute_redshift_query(connection_info, query)
     else:
         # Default to MySQL for now
-        return execute_mysql_query(connection_info, query)
+        return execute_mysql_query(connection_info, query, query_timeout)
         
 # Helper function to get database schema
 def get_database_schema(connection_info):
