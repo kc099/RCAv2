@@ -55,7 +55,7 @@ def text_to_sql_agent_view(request):
         connection_id = data.get('connection_id')
         notebook_id = data.get('notebook_id')
         conversation_id = data.get('conversation_id')
-        referenced_cells = data.get('referenced_cells', [])
+        selected_schemas = data.get('selected_schemas', [])
         
         # Validate required fields
         if not user_nl_query:
@@ -174,6 +174,23 @@ def text_to_sql_agent_view(request):
                 
             schemas = get_database_schema(connection_info)
             
+            # Filter schemas based on user selection to reduce token cost
+            if selected_schemas and len(selected_schemas) > 0:
+                selected_schema_names = [s.get('name') for s in selected_schemas if s.get('name')]
+                filtered_schemas = []
+                
+                for schema in schemas:
+                    schema_name = schema.get('schema_name') or schema.get('database_name') or 'default'
+                    if schema_name in selected_schema_names:
+                        filtered_schemas.append(schema)
+                        logger.info(f"Agent including schema: {schema_name} with {len(schema.get('tables', {}))} tables")
+                
+                if filtered_schemas:
+                    schemas = filtered_schemas
+                    logger.info(f"Agent filtered to {len(schemas)} selected schema(s) to reduce token cost")
+                else:
+                    logger.warning("No schemas matched user selection, using all available schemas")
+            
             # Format the schema for the LLM (convert from list of dicts to string)
             database_schema = format_schema_for_llm(schemas)
             
@@ -182,6 +199,9 @@ def text_to_sql_agent_view(request):
                     "success": False,
                     "error": "Could not retrieve database schema"
                 }, status=500)
+                
+            logger.info(f"Agent using schema context ({len(database_schema)} chars) for {len(schemas)} schema(s)")
+            
         except Exception as e:
             logger.error(f"Error getting schema for notebook connection: {str(e)}")
             return JsonResponse({
@@ -227,7 +247,7 @@ def text_to_sql_agent_view(request):
             final_sql=None,
             should_continue=True,
             error_message=None,
-            referenced_cells=referenced_cells
+            selected_schemas=selected_schemas
         )
         
         # Get agent and invoke

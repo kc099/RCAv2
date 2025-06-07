@@ -1,25 +1,25 @@
 /**
- * Cell Reference Manager - Handles @ functionality and checkbox-based cell selection
+ * Schema Reference Manager - Handles @ functionality for schema selection
  */
-class CellReferenceManager {
+class SchemaReferenceManager {
     constructor() {
         this.isDropdownOpen = false;
-        this.selectedCells = new Map(); // cellId -> cellData
-        this.availableCells = [];
-        this.cellResults = new Map(); // Cache for cell results
-        this.resultsPreviews = new Map(); // Cache for result previews
+        this.selectedSchemas = new Map(); // schemaName -> schemaData
+        this.availableSchemas = [];
+        this.cachedSchemas = new Map(); // Cache for schema data
         this.init();
     }
 
     init() {
         this.setupEventListeners();
-        this.loadAvailableCells();
+        // Don't load schemas immediately - wait for sidebar to be populated
+        this.setupSchemaWatchers();
     }
 
     setupEventListeners() {
         // Reference button click
         document.addEventListener('click', (e) => {
-            if (e.target.id === 'cellReferenceBtn' || e.target.closest('#cellReferenceBtn')) {
+            if (e.target.id === 'schemaReferenceBtn' || e.target.closest('#schemaReferenceBtn')) {
                 e.preventDefault();
                 this.toggleDropdown();
             }
@@ -27,17 +27,17 @@ class CellReferenceManager {
 
         // Search input
         document.addEventListener('input', (e) => {
-            if (e.target.id === 'cellSearchInput') {
-                this.filterCells(e.target.value);
+            if (e.target.id === 'schemaSearchInput') {
+                this.filterSchemas(e.target.value);
             }
         });
 
-        // Cell selection
+        // Schema selection
         document.addEventListener('click', (e) => {
-            if (e.target.closest('.cell-reference-item')) {
-                const item = e.target.closest('.cell-reference-item');
-                const cellId = parseInt(item.dataset.cellId);
-                this.toggleCellSelection(cellId);
+            if (e.target.closest('.schema-reference-item')) {
+                const item = e.target.closest('.schema-reference-item');
+                const schemaName = item.dataset.schemaName;
+                this.toggleSchemaSelection(schemaName);
             }
         });
 
@@ -62,98 +62,257 @@ class CellReferenceManager {
         // Remove tag clicks
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('remove-tag')) {
-                const tag = e.target.closest('.cell-reference-tag');
-                const cellId = parseInt(tag.dataset.cellId);
-                this.deselectCell(cellId);
+                const tag = e.target.closest('.schema-reference-tag');
+                const schemaName = tag.dataset.schemaName;
+                this.deselectSchema(schemaName);
             }
         });
 
-        // Checkbox selection handling
-        document.addEventListener('change', (e) => {
-            if (e.target.classList.contains('cell-reference-checkbox')) {
-                const cellId = parseInt(e.target.dataset.cellId);
-                if (e.target.checked) {
-                    this.selectCellFromCheckbox(cellId);
-                } else {
-                    this.deselectCell(cellId);
-                }
-            }
-        });
-
-        // Listen for cell updates
-        document.addEventListener('cellUpdated', () => {
-            this.loadAvailableCells();
-        });
-
-        document.addEventListener('cellAdded', () => {
-            this.loadAvailableCells();
-        });
-
-        document.addEventListener('cellDeleted', () => {
-            this.loadAvailableCells();
+        // Listen for schema panel updates
+        document.addEventListener('schemaUpdated', () => {
+            this.loadAvailableSchemas();
         });
     }
 
-    loadAvailableCells() {
-        this.availableCells = [];
+    setupSchemaWatchers() {
+        // Watch for schemas to be loaded in the sidebar
+        this.watchForSchemaLoad();
         
-        // Get cells from the notebook DOM
-        const cellElements = document.querySelectorAll('.sql-cell');
-        cellElements.forEach(cellElement => {
-            const cellId = parseInt(cellElement.dataset.cellId);
-            const cellOrder = parseInt(cellElement.dataset.order);
-            const cellNameElement = cellElement.querySelector('.cell-name');
-            const cellName = cellNameElement ? cellNameElement.textContent.trim() : `Cell ${cellOrder}`;
-            
-            // Get cell query content
-            let cellQuery = '';
-            try {
-                const editorId = `editor-${cellId}`;
-                if (window.editors && window.editors[editorId]) {
-                    cellQuery = window.editors[editorId].getValue();
-                } else {
-                    const textarea = cellElement.querySelector('.cell-editor-textarea');
-                    if (textarea) {
-                        cellQuery = textarea.value;
-                    }
-                }
-            } catch (error) {
-                console.warn('Could not get query for cell', cellId, error);
-            }
-
-            this.availableCells.push({
-                id: cellId,
-                order: cellOrder,
-                name: cellName,
-                query: cellQuery || '-- Empty cell'
-            });
-        });
-
-        this.renderCellList();
+        // Also set up mutation observer to detect when schemas are added to DOM
+        this.setupSchemaMutationObserver();
+        
+        // Periodically check for schemas (fallback)
+        this.startSchemaPolling();
     }
 
-    renderCellList() {
-        const listElement = document.getElementById('cellReferenceList');
-        if (!listElement) return;
-
-        if (this.availableCells.length === 0) {
-            listElement.innerHTML = '<div class="no-cells-message">No cells available in this notebook</div>';
+    watchForSchemaLoad() {
+        // Check if schemas are already loaded
+        if (this.checkForLoadedSchemas()) {
+            this.loadAvailableSchemas();
             return;
         }
 
-        const html = this.availableCells.map(cell => {
-            const isSelected = this.selectedCells.has(cell.id);
-            const preview = cell.query.length > 50 ? 
-                cell.query.substring(0, 50) + '...' : 
-                cell.query;
+        // Listen for common events that indicate schema loading
+        const events = ['schemasLoaded', 'sidebarUpdated', 'databaseConnected', 'workbenchReady'];
+        events.forEach(eventName => {
+            document.addEventListener(eventName, () => {
+                setTimeout(() => this.loadAvailableSchemas(), 100);
+            });
+        });
+    }
+
+    setupSchemaMutationObserver() {
+        // Watch specifically for changes in the database-schemas container
+        const targetElement = document.getElementById('database-schemas');
+        
+        if (!targetElement) {
+            return;
+        }
+
+                const observer = new MutationObserver((mutations) => {
+            let schemaChanged = false;
+            
+            mutations.forEach((mutation) => {
+                // Check if any added nodes contain schema elements
+                mutation.addedNodes.forEach((node) => {
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        const element = node;
+                        if (element.classList.contains('schema') ||
+                            element.querySelector('.schema')) {
+                            schemaChanged = true;
+                        }
+                    }
+                });
+            });
+
+            if (schemaChanged) {
+                // Debounce the reload to avoid multiple rapid calls
+                clearTimeout(this.schemaReloadTimeout);
+                this.schemaReloadTimeout = setTimeout(() => {
+                    this.loadAvailableSchemas();
+                }, 500);
+            }
+        });
+
+        observer.observe(targetElement, {
+            childList: true,
+            subtree: true,
+            attributes: false
+        });
+
+        this.schemaMutationObserver = observer;
+    }
+
+    startSchemaPolling() {
+        // Poll for schemas every 2 seconds for the first 30 seconds
+        let attempts = 0;
+        const maxAttempts = 15;
+        
+        this.schemaPollingInterval = setInterval(() => {
+            attempts++;
+            
+            if (this.checkForLoadedSchemas()) {
+                this.loadAvailableSchemas();
+                this.stopSchemaPolling();
+            } else if (attempts >= maxAttempts) {
+                this.stopSchemaPolling();
+                // Try loading anyway in case schemas are there but not detected
+                this.loadAvailableSchemas();
+            }
+        }, 2000);
+    }
+
+    stopSchemaPolling() {
+        if (this.schemaPollingInterval) {
+            clearInterval(this.schemaPollingInterval);
+            this.schemaPollingInterval = null;
+        }
+    }
+
+    checkForLoadedSchemas() {
+        // Check if schemas are loaded in the sidebar
+        const sidebarContainer = document.getElementById('database-schemas');
+        if (!sidebarContainer) {
+            return false;
+        }
+        
+        const schemaElements = sidebarContainer.querySelectorAll('.schema');
+        const hasSchemaElements = schemaElements.length > 0;
+        
+        const hasGlobalSchema = typeof window.databaseSchemas !== 'undefined' && 
+                               Array.isArray(window.databaseSchemas) && 
+                               window.databaseSchemas.length > 0;
+        
+        return hasSchemaElements || hasGlobalSchema;
+    }
+
+    loadAvailableSchemas() {
+        this.availableSchemas = [];
+        
+        // Target only the actual database schemas sidebar section
+        const sidebarContainer = document.getElementById('database-schemas');
+        if (!sidebarContainer) {
+            this.loadSchemasFromGlobalData();
+            return;
+        }
+        
+        // Look for schema elements within the sidebar only
+        const schemaElements = sidebarContainer.querySelectorAll('.schema');
+        
+        schemaElements.forEach(schemaElement => {
+            const schemaName = this.extractSchemaName(schemaElement);
+            if (schemaName) {
+                const tables = this.extractTablesFromSchema(schemaElement);
+                this.availableSchemas.push({
+                    name: schemaName,
+                    tables: tables,
+                    tableCount: tables.length
+                });
+            }
+        });
+
+        // Fallback: try to extract from global schema data if available
+        if (this.availableSchemas.length === 0) {
+            this.loadSchemasFromGlobalData();
+        }
+
+        this.renderSchemaList();
+    }
+
+    extractSchemaName(schemaElement) {
+        // Extract schema name from .schema-header span element
+        const schemaHeader = schemaElement.querySelector('.schema-header span');
+        if (schemaHeader) {
+            return schemaHeader.textContent.trim();
+        }
+        
+        // Fallback: try dataset attributes
+        if (schemaElement.dataset.schemaName) {
+            return schemaElement.dataset.schemaName;
+        }
+        
+        return null;
+    }
+
+    extractTablesFromSchema(schemaElement) {
+        const tables = [];
+        
+        // Look for table items within the schema tables container
+        const tableElements = schemaElement.querySelectorAll('.schema-tables .table-item');
+        
+        tableElements.forEach(tableElement => {
+            // Get table name from data attribute or span text
+            let tableName = tableElement.dataset.tableName;
+            
+            if (!tableName) {
+                // Extract from span element (excluding the icon and row count)
+                const tableSpan = tableElement.querySelector('span:not(.row-count)');
+                if (tableSpan) {
+                    tableName = tableSpan.textContent.trim();
+                }
+            }
+            
+            if (tableName && !tables.includes(tableName)) {
+                tables.push(tableName);
+            }
+        });
+        
+        return tables;
+    }
+
+    loadSchemasFromGlobalData() {
+        // Extract schemas from global database schema data
+        try {
+            // Try the schema_explorer.js global variable first
+            if (window.databaseSchemas && Array.isArray(window.databaseSchemas)) {
+                window.databaseSchemas.forEach(schema => {
+                    const tables = schema.tables ? schema.tables.map(table => table.name) : [];
+                    this.availableSchemas.push({
+                        name: schema.name,
+                        tables: tables,
+                        tableCount: tables.length
+                    });
+                });
+            }
+            // Fallback to other possible global variables
+            else if (window.databaseSchema && typeof window.databaseSchema === 'object') {
+                Object.keys(window.databaseSchema).forEach(schemaName => {
+                    const schema = window.databaseSchema[schemaName];
+                    const tables = Object.keys(schema.tables || {});
+                    this.availableSchemas.push({
+                        name: schemaName,
+                        tables: tables,
+                        tableCount: tables.length
+                    });
+                });
+            }
+        } catch (error) {
+            // Silent fallback
+        }
+    }
+
+    renderSchemaList() {
+        const listElement = document.getElementById('schemaReferenceList');
+        if (!listElement) return;
+
+        if (this.availableSchemas.length === 0) {
+            listElement.innerHTML = '<div class="no-schemas-message">No schemas available</div>';
+            return;
+        }
+
+        const html = this.availableSchemas.map(schema => {
+            const isSelected = this.selectedSchemas.has(schema.name);
+            const preview = schema.tables.length > 0 ? 
+                `${schema.tableCount} tables: ${schema.tables.slice(0, 3).join(', ')}${schema.tables.length > 3 ? '...' : ''}` : 
+                'No tables';
 
             return `
-                <div class="cell-reference-item ${isSelected ? 'selected' : ''}" data-cell-id="${cell.id}">
-                    <div class="cell-name-ref">
-                        <span class="cell-order-ref">[${cell.order}]</span>
-                        ${cell.name}
+                <div class="schema-reference-item ${isSelected ? 'selected' : ''}" data-schema-name="${schema.name}">
+                    <div class="schema-name-ref">
+                        <i class="fas fa-database"></i>
+                        ${schema.name}
                     </div>
-                    <div class="cell-preview">${preview}</div>
+                    <div class="schema-preview">${preview}</div>
                 </div>
             `;
         }).join('');
@@ -161,35 +320,34 @@ class CellReferenceManager {
         listElement.innerHTML = html;
     }
 
-    filterCells(searchTerm) {
-        const filteredCells = this.availableCells.filter(cell => {
+    filterSchemas(searchTerm) {
+        const filteredSchemas = this.availableSchemas.filter(schema => {
             const searchLower = searchTerm.toLowerCase();
-            return cell.name.toLowerCase().includes(searchLower) ||
-                   cell.query.toLowerCase().includes(searchLower) ||
-                   cell.order.toString().includes(searchTerm);
+            return schema.name.toLowerCase().includes(searchLower) ||
+                   schema.tables.some(table => table.toLowerCase().includes(searchLower));
         });
 
-        const listElement = document.getElementById('cellReferenceList');
+        const listElement = document.getElementById('schemaReferenceList');
         if (!listElement) return;
 
-        if (filteredCells.length === 0) {
-            listElement.innerHTML = '<div class="no-cells-message">No cells match your search</div>';
+        if (filteredSchemas.length === 0) {
+            listElement.innerHTML = '<div class="no-schemas-message">No schemas match your search</div>';
             return;
         }
 
-        const html = filteredCells.map(cell => {
-            const isSelected = this.selectedCells.has(cell.id);
-            const preview = cell.query.length > 50 ? 
-                cell.query.substring(0, 50) + '...' : 
-                cell.query;
+        const html = filteredSchemas.map(schema => {
+            const isSelected = this.selectedSchemas.has(schema.name);
+            const preview = schema.tables.length > 0 ? 
+                `${schema.tableCount} tables: ${schema.tables.slice(0, 3).join(', ')}${schema.tables.length > 3 ? '...' : ''}` : 
+                'No tables';
 
             return `
-                <div class="cell-reference-item ${isSelected ? 'selected' : ''}" data-cell-id="${cell.id}">
-                    <div class="cell-name-ref">
-                        <span class="cell-order-ref">[${cell.order}]</span>
-                        ${cell.name}
+                <div class="schema-reference-item ${isSelected ? 'selected' : ''}" data-schema-name="${schema.name}">
+                    <div class="schema-name-ref">
+                        <i class="fas fa-database"></i>
+                        ${schema.name}
                     </div>
-                    <div class="cell-preview">${preview}</div>
+                    <div class="schema-preview">${preview}</div>
                 </div>
             `;
         }).join('');
@@ -206,17 +364,19 @@ class CellReferenceManager {
     }
 
     openDropdown() {
-        const dropdown = document.getElementById('cellReferenceDropdown');
-        const button = document.getElementById('cellReferenceBtn');
+        const dropdown = document.getElementById('schemaReferenceDropdown');
+        const button = document.getElementById('schemaReferenceBtn');
         
         if (dropdown && button) {
-            this.loadAvailableCells();
+            // Always refresh schemas when opening dropdown in case they've been loaded
+            this.loadAvailableSchemas();
+            
             dropdown.style.display = 'block';
             button.classList.add('active');
             this.isDropdownOpen = true;
             
             // Focus search input
-            const searchInput = document.getElementById('cellSearchInput');
+            const searchInput = document.getElementById('schemaSearchInput');
             if (searchInput) {
                 setTimeout(() => searchInput.focus(), 100);
             }
@@ -224,8 +384,8 @@ class CellReferenceManager {
     }
 
     closeDropdown() {
-        const dropdown = document.getElementById('cellReferenceDropdown');
-        const button = document.getElementById('cellReferenceBtn');
+        const dropdown = document.getElementById('schemaReferenceDropdown');
+        const button = document.getElementById('schemaReferenceBtn');
         
         if (dropdown && button) {
             dropdown.style.display = 'none';
@@ -233,58 +393,58 @@ class CellReferenceManager {
             this.isDropdownOpen = false;
             
             // Clear search
-            const searchInput = document.getElementById('cellSearchInput');
+            const searchInput = document.getElementById('schemaSearchInput');
             if (searchInput) {
                 searchInput.value = '';
             }
         }
     }
 
-    toggleCellSelection(cellId) {
-        if (this.selectedCells.has(cellId)) {
-            this.deselectCell(cellId);
+    toggleSchemaSelection(schemaName) {
+        if (this.selectedSchemas.has(schemaName)) {
+            this.deselectSchema(schemaName);
         } else {
-            this.selectCell(cellId);
+            this.selectSchema(schemaName);
         }
     }
 
-    selectCell(cellId) {
-        const cell = this.availableCells.find(c => c.id === cellId);
-        if (cell) {
-            this.selectedCells.set(cellId, cell);
-            this.renderSelectedCells();
-            this.renderCellList(); // Update selection state in dropdown
+    selectSchema(schemaName) {
+        const schema = this.availableSchemas.find(s => s.name === schemaName);
+        if (schema) {
+            this.selectedSchemas.set(schemaName, schema);
+            this.renderSelectedSchemas();
+            this.renderSchemaList(); // Update selection state in dropdown
         }
     }
 
-    deselectCell(cellId) {
-        this.selectedCells.delete(cellId);
-        this.renderSelectedCells();
-        this.renderCellList(); // Update selection state in dropdown
+    deselectSchema(schemaName) {
+        this.selectedSchemas.delete(schemaName);
+        this.renderSelectedSchemas();
+        this.renderSchemaList(); // Update selection state in dropdown
     }
 
-    renderSelectedCells() {
+    renderSelectedSchemas() {
         const container = document.querySelector('.nl-input-container');
         if (!container) return;
 
         // Remove existing tags
-        const existingTags = container.querySelector('.cell-reference-tags');
+        const existingTags = container.querySelector('.schema-reference-tags');
         if (existingTags) {
             existingTags.remove();
         }
 
-        if (this.selectedCells.size === 0) return;
+        if (this.selectedSchemas.size === 0) return;
 
         // Create tags container
         const tagsContainer = document.createElement('div');
-        tagsContainer.className = 'cell-reference-tags';
+        tagsContainer.className = 'schema-reference-tags';
 
-        this.selectedCells.forEach(cell => {
+        this.selectedSchemas.forEach(schema => {
             const tag = document.createElement('div');
-            tag.className = 'cell-reference-tag';
-            tag.dataset.cellId = cell.id;
+            tag.className = 'schema-reference-tag';
+            tag.dataset.schemaName = schema.name;
             tag.innerHTML = `
-                <span>[${cell.order}] ${cell.name}</span>
+                <span><i class="fas fa-database"></i> ${schema.name} (${schema.tableCount} tables)</span>
                 <span class="remove-tag">×</span>
             `;
             tagsContainer.appendChild(tag);
@@ -300,17 +460,16 @@ class CellReferenceManager {
         }
     }
 
-    getSelectedCellsData() {
-        const cellsData = [];
-        this.selectedCells.forEach(cell => {
-            cellsData.push({
-                id: cell.id,
-                name: cell.name,
-                order: cell.order,
-                query: cell.query
+    getSelectedSchemasData() {
+        const schemasData = [];
+        this.selectedSchemas.forEach(schema => {
+            schemasData.push({
+                name: schema.name,
+                tables: schema.tables,
+                tableCount: schema.tableCount
             });
         });
-        return cellsData;
+        return schemasData;
     }
 
     async selectCellFromCheckbox(cellId) {
@@ -409,41 +568,26 @@ class CellReferenceManager {
         return referencedText;
     }
 
-    clearSelectedCells() {
-        this.selectedCells.clear();
-        this.renderSelectedCells();
-        this.renderCellList();
-        
-        // Uncheck all checkboxes
-        document.querySelectorAll('.cell-reference-checkbox').forEach(checkbox => {
-            checkbox.checked = false;
-        });
+    clearSelectedSchemas() {
+        this.selectedSchemas.clear();
+        this.renderSelectedSchemas();
+        this.renderSchemaList();
     }
 
-    getSelectedCellsForAgent() {
-        const cellsData = [];
-        this.selectedCells.forEach(cell => {
-            const cellInfo = {
-                id: cell.cell_id || cell.id,
-                name: cell.cell_name || cell.name,
-                order: cell.order,
-                query: cell.cell_query || cell.query,
-                has_results: cell.has_results || false,
-                row_count: cell.total_rows || cell.row_count || 0,
-                columns: cell.columns || [],
-                execution_time: cell.execution_time,
-                last_executed: cell.last_executed
+    getSelectedSchemasForAgent() {
+        const schemasData = [];
+        this.selectedSchemas.forEach(schema => {
+            const schemaInfo = {
+                name: schema.name,
+                tables: schema.tables,
+                tableCount: schema.tableCount
             };
-            
-            // Include sample data if available
-            if (cell.sample_rows) {
-                cellInfo.sample_data = cell.sample_rows;
-            }
-            
-            cellsData.push(cellInfo);
+            schemasData.push(schemaInfo);
         });
-        return cellsData;
+        return schemasData;
     }
+
+
 }
 
 /**
@@ -457,7 +601,7 @@ class TextToSQLAgent {
     constructor() {
         this.currentConversationId = null;
         this.isProcessing = false;
-        this.cellReferenceManager = new CellReferenceManager();
+        this.schemaReferenceManager = new SchemaReferenceManager();
         this.init();
     }
 
@@ -757,16 +901,16 @@ class TextToSQLAgent {
         this.updateCellContent(cellId, '-- Processing your request...');
 
         try {
-            // Get selected cells for context
-            const selectedCells = this.cellReferenceManager.getSelectedCellsForAgent();
+            // Get selected schemas for context
+            const selectedSchemas = this.schemaReferenceManager.getSelectedSchemasForAgent();
             
             // Clear input
             nlInput.value = '';
             
             // Add user message to conversation immediately
             let displayQuery = query;
-            if (selectedCells.length > 0) {
-                displayQuery += ` (referencing ${selectedCells.length} cell${selectedCells.length > 1 ? 's' : ''})`;
+            if (selectedSchemas.length > 0) {
+                displayQuery += ` (focusing on ${selectedSchemas.length} schema${selectedSchemas.length > 1 ? 's' : ''})`;
             }
             this.addMessageToConversation('user', displayQuery);
             
@@ -776,7 +920,7 @@ class TextToSQLAgent {
                 connection_id: activeConnectionId,
                 notebook_id: currentNotebookId,
                 conversation_id: this.currentConversationId,
-                referenced_cells: selectedCells
+                selected_schemas: selectedSchemas
             };
 
             // Send to agent endpoint
@@ -1622,6 +1766,8 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             console.error('Submit button not found!');
         }
+        
+
         
     } catch (error) {
         console.error('Error initializing TextToSQLAgent:', error);

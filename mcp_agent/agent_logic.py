@@ -37,7 +37,9 @@ class AgentState(TypedDict):
     final_sql: Optional[str]  # Final SQL when task is complete
     should_continue: bool  # Whether to continue iterating
     error_message: Optional[str]  # Last error message if any
-    referenced_cells: List[Dict[str, Any]]  # Referenced cells data
+    referenced_cells: List[Dict[str, Any]]  # Referenced cells data (deprecated)
+    selected_schemas: List[Dict[str, Any]]  # Selected schemas for focused context
+    last_successful_sql: Optional[str]  # Last SQL that executed successfully
 
 
 def get_database_specific_instructions(connection_type: str) -> str:
@@ -109,39 +111,27 @@ def get_database_specific_instructions(connection_type: str) -> str:
 """)
 
 
-def get_system_prompt(database_schema: str, user_nl_query: str, connection_type: str, iteration: int = 0, referenced_cells: list = None) -> str:
+def get_system_prompt(database_schema: str, user_nl_query: str, connection_type: str, iteration: int = 0, selected_schemas: list = None) -> str:
     """Generate the system prompt for the Anthropic API"""
     
     # Get database-specific instructions
     db_specific_instructions = get_database_specific_instructions(connection_type)
     
-    # Build referenced cells context if provided
-    referenced_cells_context = ""
-    if referenced_cells and len(referenced_cells) > 0:
-        referenced_cells_context = "\n\n**Referenced Cells Context:**\n"
-        referenced_cells_context += f"The user has selected {len(referenced_cells)} cell(s) for context:\n\n"
+    # Build selected schemas context if provided
+    selected_schemas_context = ""
+    if selected_schemas and len(selected_schemas) > 0:
+        selected_schemas_context = "\n\n**Selected Schema Context:**\n"
+        selected_schemas_context += f"The user has focused on {len(selected_schemas)} schema(s). Only use tables from these schemas:\n\n"
         
-        for cell in referenced_cells:
-            referenced_cells_context += f"[{cell.get('order', 'N/A')}] {cell.get('name', 'Untitled Cell')}:\n"
-            referenced_cells_context += f"SQL Query: {cell.get('query', 'No query')}\n"
-            
-            if cell.get('has_results') and cell.get('row_count', 0) > 0:
-                referenced_cells_context += f"Results: {cell.get('row_count')} rows"
-                if cell.get('columns'):
-                    referenced_cells_context += f", Columns: {', '.join(cell.get('columns', [])[:5])}"
-                    if len(cell.get('columns', [])) > 5:
-                        referenced_cells_context += "..."
-                referenced_cells_context += "\n"
-                
-                # Include sample data if available
-                if cell.get('sample_data'):
-                    referenced_cells_context += "Sample Data:\n"
-                    for i, row in enumerate(cell.get('sample_data', [])[:2]):
-                        referenced_cells_context += f"  Row {i+1}: {row}\n"
-            else:
-                referenced_cells_context += "Status: Not executed or no results\n"
-            
-            referenced_cells_context += "\n"
+        for schema in selected_schemas:
+            selected_schemas_context += f"Schema: {schema.get('name', 'unknown')}\n"
+            tables = schema.get('tables', [])
+            if tables:
+                selected_schemas_context += f"Tables ({len(tables)}): {', '.join(tables[:10])}"
+                if len(tables) > 10:
+                    selected_schemas_context += f" ... and {len(tables) - 10} more"
+                selected_schemas_context += "\n"
+            selected_schemas_context += "\n"
     
     base_prompt = f"""You are an expert SQL generation assistant. Your role is to help users generate accurate SQL queries based on their natural language requests and the provided database schema.
 
@@ -151,7 +141,7 @@ def get_system_prompt(database_schema: str, user_nl_query: str, connection_type:
 {database_schema}
 
 **User's Request:**
-{user_nl_query}{referenced_cells_context}
+{user_nl_query}{selected_schemas_context}
 
 **Current Iteration:** {iteration}
 
@@ -178,7 +168,7 @@ def get_system_prompt(database_schema: str, user_nl_query: str, connection_type:
 - Follow {connection_type.upper()}-specific syntax and functions
 - Consider relationships between tables when writing JOINs
 - Be careful with data types and NULL handling specific to {connection_type.upper()}
-- **Reference any selected cells** and explain how they relate to the current request
+- **Focus on the selected schemas** if any are specified to reduce token usage
 - Always validate your SQL syntax for {connection_type.upper()}
 - Provide clear, readable SQL with proper formatting
 
@@ -259,9 +249,9 @@ def sql_generation_node(state: AgentState) -> AgentState:
         # Prepare messages for Anthropic API
         messages = []
         
-        # Add system message with dynamic connection type and referenced cells
-        referenced_cells = state.get("referenced_cells", [])
-        system_prompt = get_system_prompt(state["database_schema"], state["user_nl_query"], connection_type, state["current_iteration"], referenced_cells)
+        # Add system message with dynamic connection type and selected schemas
+        selected_schemas = state.get("selected_schemas", [])
+        system_prompt = get_system_prompt(state["database_schema"], state["user_nl_query"], connection_type, state["current_iteration"], selected_schemas)
         
         # Log basic schema info for debugging
         if state["current_iteration"] == 0:  # Only log on first iteration to avoid spam
@@ -412,6 +402,9 @@ def execute_sql_tool(state: AgentState) -> AgentState:
         logger.debug(f"SQL execution result - Success: {success}, Type: {type(result)}")
         
         if success:
+            # Store the last successful SQL for iteration limit fallback
+            state["last_successful_sql"] = state["current_sql_query"]
+            
             # Prepare detailed result summary for LLM
             if isinstance(result, dict):
                 # Handle 'rows' format
@@ -498,12 +491,21 @@ def execute_sql_tool(state: AgentState) -> AgentState:
 def decide_next_step(state: AgentState) -> str:
     """Router node that decides the next step in the workflow"""
     
+    # Set iteration limit to 10 steps
+    ITERATION_LIMIT = 10
+    
     logger.debug(f"Deciding next step for iteration {state['current_iteration']}")
     logger.debug(f"Messages count: {len(state['messages'])}")
     
-    # Check iteration limits
-    if state["current_iteration"] >= state["max_iterations"]:
-        logger.info(f"Max iterations ({state['max_iterations']}) reached")
+    # Check iteration limits - if exceeded, use last successful SQL as final
+    if state["current_iteration"] >= ITERATION_LIMIT:
+        logger.info(f"Max iterations ({ITERATION_LIMIT}) reached")
+        
+        # If we have a last successful SQL, use it as final
+        if state.get("last_successful_sql"):
+            state["final_sql"] = state["last_successful_sql"]
+            logger.info(f"Using last successful SQL as final due to iteration limit: {state['final_sql'][:50]}...")
+        
         return END
         
     # Check if there's an error that should stop execution
