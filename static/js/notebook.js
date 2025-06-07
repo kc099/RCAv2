@@ -297,8 +297,13 @@ function renderCell(cellData) {
     
     const cellHtml = `
         <div class="cell-toolbar">
-            <div class="cell-order">[${cellData.order}]</div>
-            <div class="cell-name" data-cell-id="${cellData.id}" title="Double-click to edit">${cellData.name || 'Untitled Cell'}</div>
+            <div class="cell-header-left">
+                <input type="checkbox" class="cell-reference-checkbox" id="cell-ref-${cellData.id}" data-cell-id="${cellData.id}" title="Include in agent context">
+                <label for="cell-ref-${cellData.id}" class="cell-reference-label">
+                    <div class="cell-order">[${cellData.order}]</div>
+                </label>
+                <div class="cell-name" data-cell-id="${cellData.id}" title="Double-click to edit">${cellData.name || 'Untitled Cell'}</div>
+            </div>
             <div class="cell-buttons">
                 <button class="run-cell-btn" title="Run Cell"><i class="fas fa-play"></i></button>
                 <button class="move-up-btn" title="Move Up"><i class="fas fa-arrow-up"></i></button>

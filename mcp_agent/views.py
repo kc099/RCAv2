@@ -55,6 +55,7 @@ def text_to_sql_agent_view(request):
         connection_id = data.get('connection_id')
         notebook_id = data.get('notebook_id')
         conversation_id = data.get('conversation_id')
+        referenced_cells = data.get('referenced_cells', [])
         
         # Validate required fields
         if not user_nl_query:
@@ -94,29 +95,50 @@ def text_to_sql_agent_view(request):
                 "error": f"Error finding notebook: {str(e)}"
             }, status=400)
         
-        # Handle connection_id - auto-detect from notebook if needed
-        if connection_id == 'auto' or not connection_id:
-            # Try to get connection from notebook
-            if notebook.database_connection:
-                db_connection = notebook.database_connection
-                connection_id = db_connection.id
-            else:
+        # Handle connection_id - use notebook's actual connection instead of session/frontend connection
+        # This ensures consistency between schema retrieval and SQL execution
+        if notebook.database_connection:
+            # Use the notebook's assigned database connection
+            db_connection = notebook.database_connection
+            connection_id = db_connection.id
+            logger.info(f"Agent using notebook's assigned connection: {db_connection.name} (ID: {connection_id}, type: {db_connection.connection_type})")
+        else:
+            # Get connection info from notebook's connection_info field
+            connection_info = notebook.get_connection_info()
+            if not connection_info:
                 return JsonResponse({
                     "success": False,
                     "error": "No database connection found for this notebook"
                 }, status=400)
-        else:
-            # Get specific connection
-            try:
-                db_connection = DatabaseConnection.objects.get(
-                    id=connection_id,
-                    user=request.user
-                )
-            except DatabaseConnection.DoesNotExist:
-                return JsonResponse({
-                    "success": False,
-                    "error": "Database connection not found or access denied"
-                }, status=404)
+            
+            # Try to find a matching DatabaseConnection object based on connection info
+            connection_type = connection_info.get('type', 'mysql').lower()
+            host = connection_info.get('host')
+            database = connection_info.get('database')
+            
+            # Look for existing connection that matches the notebook's connection info
+            matching_connections = DatabaseConnection.objects.filter(
+                user=request.user,
+                connection_type=connection_type,
+                host=host,
+                database=database
+            )
+            
+            if matching_connections.exists():
+                db_connection = matching_connections.first()
+                connection_id = db_connection.id
+                logger.info(f"Agent found matching connection: {db_connection.name} (ID: {connection_id}, type: {db_connection.connection_type})")
+            else:
+                # Create a temporary connection object for consistent interface
+                class TempConnection:
+                    def __init__(self, connection_info):
+                        self.connection_type = connection_info.get('type', 'mysql').lower()
+                        self.name = f"Temp {self.connection_type} connection"
+                        self.id = f"temp_{self.connection_type}"
+                
+                db_connection = TempConnection(connection_info)
+                connection_id = db_connection.id
+                logger.info(f"Agent using temporary connection: {db_connection.name} (type: {db_connection.connection_type})")
         
         # Get or create conversation
         if conversation_id:
@@ -138,16 +160,17 @@ def text_to_sql_agent_view(request):
                 title=f"Query: {user_nl_query[:50]}..."
             )
         
-        # Get database schema
+        # Get database schema using the notebook's connection info (ensures consistency)
         try:
-            # Use the same schema approach that works in the workbench
-            # Get connection info from the notebook, not the connection model
             connection_info = notebook.get_connection_info()
             if not connection_info:
                 return JsonResponse({
                     "success": False,
                     "error": "No connection information available for this notebook"
                 }, status=400)
+                
+            # Log the connection info being used for schema retrieval
+            logger.info(f"Agent retrieving schema using connection: host={connection_info.get('host')}, type={connection_info.get('type')}")
                 
             schemas = get_database_schema(connection_info)
             
@@ -160,7 +183,7 @@ def text_to_sql_agent_view(request):
                     "error": "Could not retrieve database schema"
                 }, status=500)
         except Exception as e:
-            logger.error(f"Error getting schema for connection {connection_id}: {str(e)}")
+            logger.error(f"Error getting schema for notebook connection: {str(e)}")
             return JsonResponse({
                 "success": False,
                 "error": f"Error retrieving database schema: {str(e)}"
@@ -203,7 +226,8 @@ def text_to_sql_agent_view(request):
             user_object=request.user,
             final_sql=None,
             should_continue=True,
-            error_message=None
+            error_message=None,
+            referenced_cells=referenced_cells
         )
         
         # Get agent and invoke

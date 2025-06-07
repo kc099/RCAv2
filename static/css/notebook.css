@@ -74,11 +74,42 @@
     border-bottom: 1px solid #e0e0e0;
 }
 
+/* New cell header layout with checkbox */
+.cell-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-grow: 1;
+}
+
+.cell-reference-checkbox {
+    margin: 0;
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--primary-color, #007bff);
+}
+
+.cell-reference-checkbox:checked + .cell-reference-label .cell-order {
+    background-color: var(--primary-color, #007bff);
+    color: white;
+    border-radius: 3px;
+    padding: 2px 4px;
+}
+
+.cell-reference-label {
+    cursor: pointer;
+    margin: 0;
+    display: flex;
+    align-items: center;
+}
+
 .cell-order {
     font-family: monospace;
     color: #6c757d;
     font-size: 0.875rem;
     margin-right: 10px;
+    transition: all 0.2s ease;
 }
 
 .cell-name {

@@ -14,7 +14,7 @@ from langgraph.graph import StateGraph, END
 from anthropic import Anthropic
 from django.conf import settings
 from core.models import SQLNotebook, DatabaseConnection, SQLCell
-from core.db_handlers import execute_query, get_schema_for_connection
+from core.db_handlers import execute_query, get_schema_for_connection, execute_query_with_fallback
 from .models import AgentConversation, ChatMessage
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,7 @@ class AgentState(TypedDict):
     final_sql: Optional[str]  # Final SQL when task is complete
     should_continue: bool  # Whether to continue iterating
     error_message: Optional[str]  # Last error message if any
+    referenced_cells: List[Dict[str, Any]]  # Referenced cells data
 
 
 def get_database_specific_instructions(connection_type: str) -> str:
@@ -108,11 +109,39 @@ def get_database_specific_instructions(connection_type: str) -> str:
 """)
 
 
-def get_system_prompt(database_schema: str, user_nl_query: str, connection_type: str, iteration: int = 0) -> str:
+def get_system_prompt(database_schema: str, user_nl_query: str, connection_type: str, iteration: int = 0, referenced_cells: list = None) -> str:
     """Generate the system prompt for the Anthropic API"""
     
     # Get database-specific instructions
     db_specific_instructions = get_database_specific_instructions(connection_type)
+    
+    # Build referenced cells context if provided
+    referenced_cells_context = ""
+    if referenced_cells and len(referenced_cells) > 0:
+        referenced_cells_context = "\n\n**Referenced Cells Context:**\n"
+        referenced_cells_context += f"The user has selected {len(referenced_cells)} cell(s) for context:\n\n"
+        
+        for cell in referenced_cells:
+            referenced_cells_context += f"[{cell.get('order', 'N/A')}] {cell.get('name', 'Untitled Cell')}:\n"
+            referenced_cells_context += f"SQL Query: {cell.get('query', 'No query')}\n"
+            
+            if cell.get('has_results') and cell.get('row_count', 0) > 0:
+                referenced_cells_context += f"Results: {cell.get('row_count')} rows"
+                if cell.get('columns'):
+                    referenced_cells_context += f", Columns: {', '.join(cell.get('columns', [])[:5])}"
+                    if len(cell.get('columns', [])) > 5:
+                        referenced_cells_context += "..."
+                referenced_cells_context += "\n"
+                
+                # Include sample data if available
+                if cell.get('sample_data'):
+                    referenced_cells_context += "Sample Data:\n"
+                    for i, row in enumerate(cell.get('sample_data', [])[:2]):
+                        referenced_cells_context += f"  Row {i+1}: {row}\n"
+            else:
+                referenced_cells_context += "Status: Not executed or no results\n"
+            
+            referenced_cells_context += "\n"
     
     base_prompt = f"""You are an expert SQL generation assistant. Your role is to help users generate accurate SQL queries based on their natural language requests and the provided database schema.
 
@@ -122,42 +151,53 @@ def get_system_prompt(database_schema: str, user_nl_query: str, connection_type:
 {database_schema}
 
 **User's Request:**
-{user_nl_query}
+{user_nl_query}{referenced_cells_context}
 
 **Current Iteration:** {iteration}
 
 {db_specific_instructions}
 
 **Your Workflow:**
-1. Analyze the user's request and the database schema carefully
-2. Generate SQL queries that accurately fulfill the request using {connection_type.upper()}-specific syntax
-3. When you have a SQL query ready for execution, respond with the SQL enclosed in ```sql ... ``` blocks
-4. If SQL execution fails, analyze the error and provide corrected SQL using proper {connection_type.upper()} syntax
-5. If results look correct, say "This is the final query" to complete the task
-6. If results are unexpected, refine the query based on feedback
+1. Analyze the user's request, database schema, and any referenced cells carefully
+2. **Provide a brief explanation** of what you understand from the request
+3. Generate SQL queries that accurately fulfill the request using {connection_type.upper()}-specific syntax
+4. Present the SQL enclosed in ```sql ... ``` blocks
+5. If SQL execution fails, analyze the error and provide corrected SQL
+6. **If you need intermediate data to answer the question fully, execute simple queries first**
+7. **When you have the complete answer, say "This is the final query"** to complete the task
+
+**Guidelines for Iterations:**
+- **Use intermediate steps only when necessary** (e.g., to understand data structure, check relationships)
+- **Avoid cosmetic improvements** to working SQL (adding percentages, extra columns without purpose)
+- **Focus on answering the user's actual question** rather than embellishing
+- If a simple query already answers the question completely, mark it as final
+- Only continue if you genuinely need more information to provide a complete answer
 
 **Important Guidelines:**
 - Use the exact table and column names from the schema
 - Follow {connection_type.upper()}-specific syntax and functions
 - Consider relationships between tables when writing JOINs
 - Be careful with data types and NULL handling specific to {connection_type.upper()}
-- Start simple and iterate if needed
+- **Reference any selected cells** and explain how they relate to the current request
 - Always validate your SQL syntax for {connection_type.upper()}
 - Provide clear, readable SQL with proper formatting
 
-**Termination:**
-- When you're confident the SQL correctly answers the user's question, say "This is the final query" 
-- If you've provided the same SQL twice, the task is complete
+**Termination Rules:**
+- **Say "This is the final query" when you have completely answered the user's question**
+- Continue iterating only if you need more data to provide a complete answer
+- Avoid making unnecessary cosmetic improvements to working queries
 
 **Output Format:**
+- Start with a clear explanation of your approach
 - Always include: ```sql\nYOUR_SQL_HERE\n```
-- Add explanation before or after the SQL block
+- After the SQL, explain what the query does and why you chose this approach
 - For final answers: Include "This is the final query" in your response
+- **Be conversational and educational** - help the user understand the SQL
 
 Begin by analyzing the schema and user request to generate an appropriate {connection_type.upper()} SQL query."""
 
     if iteration > 0:
-        base_prompt += f"\n\n**Note:** This is iteration {iteration}. Review the previous execution results and refine your approach if needed. Ensure you're using correct {connection_type.upper()} syntax."
+        base_prompt += f"\n\n**ITERATION {iteration}:** Review the previous execution results. If there were errors, fix them. If the query was successful, evaluate whether you have enough information to provide a complete answer or if you need additional data to fully address the user's request."
         
     return base_prompt
 
@@ -170,26 +210,63 @@ def sql_generation_node(state: AgentState) -> AgentState:
             api_key=settings.ANTHROPIC_API_KEY
         )
         
-        # Get connection type dynamically from the database connection
+        # Get connection type from the notebook's actual connection
         try:
-            db_connection = DatabaseConnection.objects.get(
-                id=state["active_connection_id"],
-                user=state["user_object"]
-            )
-            connection_type = db_connection.connection_type
-        except DatabaseConnection.DoesNotExist:
-            logger.warning(f"Database connection {state['active_connection_id']} not found, using 'mysql' as default")
+            # First try to get from the database connection model
+            try:
+                db_connection = DatabaseConnection.objects.get(
+                    id=state["active_connection_id"],
+                    user=state["user_object"]
+                )
+                connection_type = db_connection.connection_type
+                logger.info(f"Agent detected connection type: {connection_type} for connection ID: {state['active_connection_id']}")
+            except (DatabaseConnection.DoesNotExist, ValueError):
+                # Fallback: get connection type from notebook's connection info
+                logger.warning(f"Database connection {state['active_connection_id']} not found, getting type from notebook")
+                
+                # Get notebook and its connection info
+                notebook_id = state["current_notebook_id"]
+                try:
+                    notebook = SQLNotebook.objects.get(
+                        uuid=notebook_id,
+                        user=state["user_object"]
+                    )
+                except (SQLNotebook.DoesNotExist, ValueError):
+                    try:
+                        notebook = SQLNotebook.objects.get(
+                            id=notebook_id,
+                            user=state["user_object"]
+                        )
+                    except SQLNotebook.DoesNotExist:
+                        logger.error(f"Notebook {notebook_id} not found")
+                        connection_type = 'mysql'  # Default fallback
+                
+                if 'notebook' in locals():
+                    connection_info = notebook.get_connection_info()
+                    if connection_info:
+                        connection_type = connection_info.get('type', 'mysql').lower()
+                        logger.info(f"Agent using connection type from notebook: {connection_type}")
+                    else:
+                        connection_type = 'mysql'  # Default fallback
+                        logger.warning("No connection info found in notebook, using mysql as default")
+                else:
+                    connection_type = 'mysql'  # Default fallback
+                    logger.warning("Could not find notebook, using mysql as default")
+        except Exception as e:
+            logger.error(f"Error determining connection type: {e}")
             connection_type = 'mysql'  # Default fallback
         
         # Prepare messages for Anthropic API
         messages = []
         
-        # Add system message with dynamic connection type
-        system_prompt = get_system_prompt(state["database_schema"], state["user_nl_query"], connection_type, state["current_iteration"])
+        # Add system message with dynamic connection type and referenced cells
+        referenced_cells = state.get("referenced_cells", [])
+        system_prompt = get_system_prompt(state["database_schema"], state["user_nl_query"], connection_type, state["current_iteration"], referenced_cells)
         
         # Log basic schema info for debugging
         if state["current_iteration"] == 0:  # Only log on first iteration to avoid spam
             logger.info(f"Agent using {connection_type} connection with schema ({len(state['database_schema'])} chars)")
+            logger.debug(f"Schema preview: {state['database_schema'][:200]}...")
         
         # Add conversation history
         for msg in state["messages"]:
@@ -290,13 +367,8 @@ def execute_sql_tool(state: AgentState) -> AgentState:
             state["error_message"] = "No SQL query to execute"
             return state
             
-        # Get database connection and notebook
+        # Get notebook (we need this for the actual connection info)
         try:
-            db_connection = DatabaseConnection.objects.get(
-                id=state["active_connection_id"],
-                user=state["user_object"]
-            )
-            
             # Handle both UUID and integer ID for notebook lookup
             notebook_id = state["current_notebook_id"]
             try:
@@ -312,25 +384,30 @@ def execute_sql_tool(state: AgentState) -> AgentState:
                         id=notebook_id,
                         user=state["user_object"]
                     )
+                    
+                logger.debug(f"Execute tool using notebook: {notebook.title}")
             except SQLNotebook.DoesNotExist:
                 state["error_message"] = f"Notebook not found or access denied: {notebook_id}"
                 state["should_continue"] = False
                 return state
                 
-        except (DatabaseConnection.DoesNotExist, ValueError) as e:
-            state["error_message"] = f"Database connection not found: {str(e)}"
+        except Exception as e:
+            state["error_message"] = f"Error finding notebook: {str(e)}"
             state["should_continue"] = False
             return state
             
-        # Execute SQL query 
-        # Use the same working connection approach as the main agent view
+        # Execute SQL query using the notebook's connection info
         connection_info = notebook.get_connection_info()
         if not connection_info:
             state["error_message"] = "No connection information available for this notebook"
             state["should_continue"] = False
             return state
             
-        success, result = execute_query(connection_info, state["current_sql_query"])
+        logger.debug(f"Connection info type: {connection_info.get('type')}")
+        logger.debug(f"Connection host: {connection_info.get('host')}")
+        logger.debug(f"About to execute SQL: {state['current_sql_query'][:100]}...")
+        
+        success, result = execute_query_with_fallback(connection_info, state["current_sql_query"])
         
         logger.debug(f"SQL execution result - Success: {success}, Type: {type(result)}")
         
@@ -493,17 +570,12 @@ def decide_next_step(state: AgentState) -> str:
             logger.info(f"SQL failed, continuing to iteration {state['current_iteration']}")
             return "generate_sql"
         
-        # If query succeeded, continue for potential refinement (unless marked as final)
+        # If query succeeded, let agent decide next steps
         if "successfully" in tool_content:
-            # Only end if explicitly marked as final, otherwise continue iterating
-            if state.get("final_sql"):
-                logger.info("SQL executed successfully and marked as final, ending workflow")
-                return END
-            else:
-                # Continue to allow for refinement and improvement
-                state["current_iteration"] += 1
-                logger.info(f"SQL executed successfully, continuing to iteration {state['current_iteration']} for potential refinement")
-                return "generate_sql"
+            # Increment iteration and let agent decide if more work is needed
+            state["current_iteration"] += 1
+            logger.info(f"SQL executed successfully, continuing to iteration {state['current_iteration']} - agent will decide if final")
+            return "generate_sql"
         
         # Default continue with incremented iteration
         state["current_iteration"] += 1
@@ -583,7 +655,7 @@ def create_and_execute_sql_cell(notebook: SQLNotebook, sql_query: str,
         
         # Execute the query
         connection_config = db_connection.get_connection_config()
-        success, result = execute_query(connection_config, sql_query)
+        success, result = execute_query_with_fallback(connection_config, sql_query)
         
         if success:
             # Store the results in the cell

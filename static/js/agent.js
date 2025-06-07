@@ -1,11 +1,13 @@
 /**
- * Cell Reference Manager - Handles @ functionality for referencing cells
+ * Cell Reference Manager - Handles @ functionality and checkbox-based cell selection
  */
 class CellReferenceManager {
     constructor() {
         this.isDropdownOpen = false;
         this.selectedCells = new Map(); // cellId -> cellData
         this.availableCells = [];
+        this.cellResults = new Map(); // Cache for cell results
+        this.resultsPreviews = new Map(); // Cache for result previews
         this.init();
     }
 
@@ -63,6 +65,18 @@ class CellReferenceManager {
                 const tag = e.target.closest('.cell-reference-tag');
                 const cellId = parseInt(tag.dataset.cellId);
                 this.deselectCell(cellId);
+            }
+        });
+
+        // Checkbox selection handling
+        document.addEventListener('change', (e) => {
+            if (e.target.classList.contains('cell-reference-checkbox')) {
+                const cellId = parseInt(e.target.dataset.cellId);
+                if (e.target.checked) {
+                    this.selectCellFromCheckbox(cellId);
+                } else {
+                    this.deselectCell(cellId);
+                }
             }
         });
 
@@ -299,12 +313,97 @@ class CellReferenceManager {
         return cellsData;
     }
 
+    async selectCellFromCheckbox(cellId) {
+        // Find the cell data
+        const cell = this.availableCells.find(c => c.id === cellId);
+        if (cell) {
+            // Load full data including results if available
+            const cellData = await this.loadCellData(cellId);
+            this.selectedCells.set(cellId, cellData || cell);
+            this.renderSelectedCells();
+            this.renderCellList();
+        }
+    }
+
+    async loadCellData(cellId) {
+        try {
+            const notebookUuid = this.getNotebookUuid();
+            if (!notebookUuid) return null;
+
+            const response = await fetch(`/api/notebooks/${notebookUuid}/cells/${cellId}/results/?detail=preview`);
+            const result = await response.json();
+            
+            if (result.success) {
+                this.resultsPreviews.set(cellId, result.data);
+                return result.data;
+            }
+        } catch (error) {
+            console.warn('Could not load cell results:', error);
+        }
+        
+        // Fallback to basic cell data
+        return this.availableCells.find(c => c.id === cellId);
+    }
+
+    async loadAvailableCellsWithResults() {
+        try {
+            const notebookUuid = this.getNotebookUuid();
+            if (!notebookUuid) return [];
+
+            const response = await fetch(`/api/notebooks/${notebookUuid}/cell-summaries/`);
+            const result = await response.json();
+            
+            if (result.success) {
+                return result.cells;
+            }
+        } catch (error) {
+            console.warn('Could not load cell summaries:', error);
+        }
+        return [];
+    }
+
+    getNotebookUuid() {
+        // Try to get from the notebook container
+        const notebookContainer = document.getElementById('notebook-container');
+        if (notebookContainer && notebookContainer.dataset.notebookId) {
+            return notebookContainer.dataset.notebookId;
+        }
+        
+        // Try to extract from URL
+        const urlParts = window.location.pathname.split('/');
+        const workbenchIndex = urlParts.indexOf('workbench');
+        if (workbenchIndex !== -1 && urlParts[workbenchIndex + 1]) {
+            return urlParts[workbenchIndex + 1];
+        }
+        
+        return null;
+    }
+
     getReferencedCellsText() {
         if (this.selectedCells.size === 0) return '';
 
         let referencedText = '\n\n--- Referenced Cells ---\n';
         this.selectedCells.forEach(cell => {
-            referencedText += `\n[${cell.order}] ${cell.name}:\n${cell.query}\n`;
+            referencedText += `\n[${cell.order || 'N/A'}] ${cell.cell_name || cell.name || 'Untitled'}:\n`;
+            referencedText += `SQL: ${cell.cell_query || cell.query || 'No query'}\n`;
+            
+            // Add result info if available
+            if (cell.has_results || cell.total_rows > 0) {
+                referencedText += `Results: ${cell.total_rows || cell.row_count || 0} rows`;
+                if (cell.columns && cell.columns.length > 0) {
+                    referencedText += `, Columns: ${cell.columns.slice(0, 5).join(', ')}${cell.columns.length > 5 ? '...' : ''}`;
+                }
+                referencedText += '\n';
+                
+                // Add sample data if available
+                if (cell.sample_rows && cell.sample_rows.length > 0) {
+                    referencedText += `Sample Data:\n`;
+                    cell.sample_rows.slice(0, 2).forEach((row, idx) => {
+                        referencedText += `  Row ${idx + 1}: ${JSON.stringify(row)}\n`;
+                    });
+                }
+            }
+            referencedText += '\n';
         });
         referencedText += '--- End Referenced Cells ---\n';
         return referencedText;
@@ -314,6 +413,36 @@ class CellReferenceManager {
         this.selectedCells.clear();
         this.renderSelectedCells();
         this.renderCellList();
+        
+        // Uncheck all checkboxes
+        document.querySelectorAll('.cell-reference-checkbox').forEach(checkbox => {
+            checkbox.checked = false;
+        });
+    }
+
+    getSelectedCellsForAgent() {
+        const cellsData = [];
+        this.selectedCells.forEach(cell => {
+            const cellInfo = {
+                id: cell.cell_id || cell.id,
+                name: cell.cell_name || cell.name,
+                order: cell.order,
+                query: cell.cell_query || cell.query,
+                has_results: cell.has_results || false,
+                row_count: cell.total_rows || cell.row_count || 0,
+                columns: cell.columns || [],
+                execution_time: cell.execution_time,
+                last_executed: cell.last_executed
+            };
+            
+            // Include sample data if available
+            if (cell.sample_rows) {
+                cellInfo.sample_data = cell.sample_rows;
+            }
+            
+            cellsData.push(cellInfo);
+        });
+        return cellsData;
     }
 }
 
@@ -400,6 +529,23 @@ class TextToSQLAgent {
             if (e.target.id === 'clearConversation' || e.target.closest('#clearConversation')) {
                 e.preventDefault();
                 self.clearConversation();
+            }
+        });
+
+        // Copy SQL button handling
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('copy-sql-btn') || e.target.closest('.copy-sql-btn')) {
+                e.preventDefault();
+                const button = e.target.closest('.copy-sql-btn');
+                const sqlCode = button.dataset.sql;
+                if (sqlCode) {
+                    navigator.clipboard.writeText(sqlCode).then(() => {
+                        button.classList.add('copied');
+                        setTimeout(() => button.classList.remove('copied'), 2000);
+                    }).catch(err => {
+                        console.error('Failed to copy SQL:', err);
+                    });
+                }
             }
         });
 
@@ -611,18 +757,26 @@ class TextToSQLAgent {
         this.updateCellContent(cellId, '-- Processing your request...');
 
         try {
+            // Get selected cells for context
+            const selectedCells = this.cellReferenceManager.getSelectedCellsForAgent();
+            
             // Clear input
             nlInput.value = '';
             
             // Add user message to conversation immediately
-            this.addMessageToConversation('user', query);
+            let displayQuery = query;
+            if (selectedCells.length > 0) {
+                displayQuery += ` (referencing ${selectedCells.length} cell${selectedCells.length > 1 ? 's' : ''})`;
+            }
+            this.addMessageToConversation('user', displayQuery);
             
             // Prepare request data
             const requestData = {
                 query: query,
                 connection_id: activeConnectionId,
                 notebook_id: currentNotebookId,
-                conversation_id: this.currentConversationId
+                conversation_id: this.currentConversationId,
+                referenced_cells: selectedCells
             };
 
             // Send to agent endpoint
@@ -1166,21 +1320,94 @@ class TextToSQLAgent {
 
     formatMessageContent(content, role) {
         if (role.toLowerCase() === 'assistant') {
-            // Format SQL code blocks
-            return content.replace(
-                /```sql\s*([\s\S]*?)\s*```/gi, 
-                '<div class="sql-block bg-dark text-light p-3 rounded mt-2 mb-2"><pre><code>$1</code></pre></div>'
-            ).replace(/\n/g, '<br>');
+            // Split content into explanation and SQL parts
+            const sqlMatches = content.match(/```sql\s*([\s\S]*?)\s*```/gi);
+            let formattedContent = content;
+            
+            if (sqlMatches) {
+                // Process each SQL block
+                sqlMatches.forEach((sqlBlock, index) => {
+                    const sqlCode = sqlBlock.replace(/```sql\s*|\s*```/gi, '').trim();
+                    const sqlDiv = `
+                        <div class="agent-sql-block">
+                            <div class="sql-header">
+                                <i class="fas fa-database"></i>
+                                <span>Generated SQL Query ${sqlMatches.length > 1 ? `#${index + 1}` : ''}</span>
+                                <button class="copy-sql-btn" data-sql="${this.escapeHtml(sqlCode)}" title="Copy SQL">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                            <div class="sql-code">
+                                <pre><code>${this.highlightSQL(sqlCode)}</code></pre>
+                            </div>
+                        </div>
+                    `;
+                    formattedContent = formattedContent.replace(sqlBlock, sqlDiv);
+                });
+            }
+            
+            // Format the explanation text (everything outside SQL blocks)
+            formattedContent = formattedContent.replace(/\n/g, '<br>');
+            
+            // Highlight key phrases in explanations
+            formattedContent = formattedContent.replace(
+                /(This query|The SQL|I've generated|Let me explain|Here's what this does|The result shows)/gi,
+                '<strong>$1</strong>'
+            );
+            
+            return formattedContent;
         } else if (role.toLowerCase() === 'tool_result') {
-            // Format tool results with syntax highlighting
+            // Enhanced tool result formatting
             if (content.includes('Query executed successfully')) {
-                return `<div class="text-success">${content.replace(/\n/g, '<br>')}</div>`;
+                // Parse result information
+                const rowMatch = content.match(/(\d+) rows/);
+                const columnMatch = content.match(/(\d+) columns/);
+                
+                let resultHtml = '<div class="execution-result success">';
+                resultHtml += '<div class="result-status"><i class="fas fa-check-circle"></i> Query executed successfully</div>';
+                
+                if (rowMatch || columnMatch) {
+                    resultHtml += '<div class="result-stats">';
+                    if (rowMatch) resultHtml += `<span class="stat-item"><i class="fas fa-table"></i> ${rowMatch[1]} rows</span>`;
+                    if (columnMatch) resultHtml += `<span class="stat-item"><i class="fas fa-columns"></i> ${columnMatch[1]} columns</span>`;
+                    resultHtml += '</div>';
+                }
+                
+                // Show sample data if available
+                const sampleMatch = content.match(/Sample results[\s\S]*?(?=\n\n|\n$|$)/);
+                if (sampleMatch) {
+                    resultHtml += '<div class="sample-data">';
+                    resultHtml += '<div class="sample-header">Sample Results:</div>';
+                    resultHtml += '<div class="sample-content">' + sampleMatch[0].replace(/\n/g, '<br>') + '</div>';
+                    resultHtml += '</div>';
+                }
+                
+                resultHtml += '</div>';
+                return resultHtml;
             } else if (content.includes('failed') || content.includes('error')) {
-                return `<div class="text-danger">${content.replace(/\n/g, '<br>')}</div>`;
+                return `<div class="execution-result error">
+                    <div class="result-status"><i class="fas fa-exclamation-circle"></i> Query execution failed</div>
+                    <div class="error-details">${content.replace(/\n/g, '<br>')}</div>
+                </div>`;
             }
         }
         
         return content.replace(/\n/g, '<br>');
+    }
+
+    highlightSQL(sqlCode) {
+        // Basic SQL syntax highlighting
+        return sqlCode
+            .replace(/\b(SELECT|FROM|WHERE|JOIN|INNER|LEFT|RIGHT|OUTER|ON|GROUP BY|ORDER BY|HAVING|LIMIT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|INDEX|TABLE|DATABASE)\b/gi, '<span class="sql-keyword">$1</span>')
+            .replace(/\b(AND|OR|NOT|IN|EXISTS|BETWEEN|LIKE|IS|NULL|AS|ASC|DESC|DISTINCT|COUNT|SUM|AVG|MAX|MIN)\b/gi, '<span class="sql-function">$1</span>')
+            .replace(/'([^']*?)'/g, '<span class="sql-string">\'$1\'</span>')
+            .replace(/--([^\n]*)/g, '<span class="sql-comment">--$1</span>');
+    }
+
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     formatTimestamp(timestamp) {

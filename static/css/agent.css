@@ -392,4 +392,205 @@
 
 .agent-tooltip:hover::after {
     opacity: 1;
+}
+
+/* Enhanced conversation formatting */
+
+/* Agent SQL Block Styling */
+.agent-sql-block {
+    background: #1e1e1e;
+    border-radius: 8px;
+    margin: 1rem 0;
+    overflow: hidden;
+    border: 1px solid #333;
+}
+
+.sql-header {
+    background: #2d2d2d;
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #333;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #e0e0e0;
+    font-weight: 500;
+}
+
+.sql-header i {
+    color: #4a9eff;
+}
+
+.copy-sql-btn {
+    margin-left: auto;
+    background: transparent;
+    border: 1px solid #555;
+    color: #e0e0e0;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+}
+
+.copy-sql-btn:hover {
+    background: #4a9eff;
+    border-color: #4a9eff;
+    color: white;
+}
+
+.sql-code {
+    padding: 1rem;
+}
+
+.sql-code pre {
+    margin: 0;
+    color: #e0e0e0;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    line-height: 1.5;
+}
+
+.sql-code code {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+}
+
+/* SQL syntax highlighting */
+.sql-keyword {
+    color: #569cd6;
+    font-weight: bold;
+}
+
+.sql-function {
+    color: #4ec9b0;
+}
+
+.sql-string {
+    color: #ce9178;
+}
+
+.sql-comment {
+    color: #6a9955;
+    font-style: italic;
+}
+
+/* Execution Result Styling */
+.execution-result {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 0.5rem 0;
+    border-left: 4px solid #28a745;
+}
+
+.execution-result.error {
+    background: #fff5f5;
+    border-left-color: #dc3545;
+}
+
+.result-status {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.execution-result.success .result-status {
+    color: #28a745;
+}
+
+.execution-result.error .result-status {
+    color: #dc3545;
+}
+
+.result-stats {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.stat-item {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: #6c757d;
+    font-size: 0.875rem;
+}
+
+.sample-data {
+    margin-top: 0.75rem;
+    background: #ffffff;
+    border-radius: 4px;
+    padding: 0.75rem;
+    border: 1px solid #e9ecef;
+}
+
+.sample-header {
+    font-weight: 600;
+    color: #495057;
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.sample-content {
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.8rem;
+    color: #6c757d;
+    line-height: 1.4;
+}
+
+.error-details {
+    background: #ffffff;
+    border-radius: 4px;
+    padding: 0.75rem;
+    border: 1px solid #f8d7da;
+    color: #721c24;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-size: 0.875rem;
+    margin-top: 0.5rem;
+}
+
+/* Cell Reference Status */
+.cell-reference-status {
+    background: #e3f2fd;
+    border: 1px solid #2196f3;
+    border-radius: 4px;
+    padding: 0.5rem;
+    margin: 0.5rem 0;
+    font-size: 0.875rem;
+    color: #1565c0;
+}
+
+.cell-reference-status i {
+    margin-right: 0.5rem;
+}
+
+/* Enhanced message styling */
+.message-assistant .alert {
+    background: linear-gradient(135deg, #e8f5e8 0%, #f0f8f0 100%);
+    border: 1px solid #4caf50;
+    box-shadow: 0 2px 8px rgba(76, 175, 80, 0.1);
+}
+
+.message-user .alert {
+    background: linear-gradient(135deg, #e3f2fd 0%, #f0f8ff 100%);
+    border: 1px solid #2196f3;
+    box-shadow: 0 2px 8px rgba(33, 150, 243, 0.1);
+}
+
+.message-tool_result .alert {
+    background: linear-gradient(135deg, #fff3e0 0%, #fffaf0 100%);
+    border: 1px solid #ff9800;
+    box-shadow: 0 2px 8px rgba(255, 152, 0, 0.1);
+}
+
+/* Copy functionality */
+.copy-sql-btn.copied {
+    background: #28a745 !important;
+    border-color: #28a745 !important;
+}
+
+.copy-sql-btn.copied::after {
+    content: " Copied!";
 } 

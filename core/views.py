@@ -1026,6 +1026,148 @@ def api_get_database_schema(request, notebook_uuid=None):
             'error': str(e)
         })
 
+@login_required(login_url='/login/')
+def api_get_cell_results(request, notebook_uuid, cell_id):
+    """API to get cell results for referencing"""
+    try:
+        notebook = get_object_or_404(SQLNotebook, uuid=notebook_uuid, user=request.user)
+        cell = get_object_or_404(SQLCell, id=cell_id, notebook=notebook)
+        
+        # Note: We're not storing results in the database anymore for privacy,
+        # so we'll return basic cell info even if no results are stored
+        if not cell.is_executed:
+            return JsonResponse({
+                'success': False,
+                'error': 'Cell has not been executed'
+            })
+        
+        # Return different levels of detail based on request
+        detail_level = request.GET.get('detail', 'preview')  # preview, full, metadata
+        
+        if detail_level == 'metadata':
+            # Return just metadata about the results
+            result_data = cell.result
+            if result_data and isinstance(result_data, dict):
+                row_count = len(result_data.get('rows', [])) if 'rows' in result_data else 0
+                columns = result_data.get('columns', [])
+            else:
+                row_count = 0
+                columns = []
+                
+            data = {
+                'has_results': bool(result_data),
+                'row_count': row_count,
+                'columns': columns,
+                'execution_time': cell.execution_time,
+                'last_executed': cell.updated_at.isoformat() if cell.updated_at else None
+            }
+        elif detail_level == 'full':
+            # Return full results
+            data = {
+                'cell_id': cell.id,
+                'cell_name': cell.name,
+                'cell_query': cell.query,
+                'result': cell.result,
+                'execution_time': cell.execution_time,
+                'last_executed': cell.updated_at.isoformat() if cell.updated_at else None
+            }
+        else:  # preview
+            # Return preview with limited rows
+            max_rows = int(request.GET.get('max_rows', 5))
+            result_data = cell.result
+            
+            if result_data and isinstance(result_data, dict) and 'rows' in result_data:
+                rows = result_data['rows'][:max_rows]
+                data = {
+                    'cell_id': cell.id,
+                    'cell_name': cell.name,
+                    'cell_query': cell.query[:100] + '...' if len(cell.query) > 100 else cell.query,
+                    'columns': result_data.get('columns', []),
+                    'sample_rows': rows,
+                    'total_rows': len(result_data['rows']),
+                    'execution_time': cell.execution_time,
+                    'last_executed': cell.updated_at.isoformat() if cell.updated_at else None,
+                    'has_results': True
+                }
+            else:
+                # Cell was executed but no results stored (privacy mode)
+                data = {
+                    'cell_id': cell.id,
+                    'cell_name': cell.name,
+                    'cell_query': cell.query[:100] + '...' if len(cell.query) > 100 else cell.query,
+                    'columns': [],
+                    'sample_rows': [],
+                    'total_rows': 0,
+                    'execution_time': cell.execution_time,
+                    'last_executed': cell.updated_at.isoformat() if cell.updated_at else None,
+                    'has_results': False
+                }
+            
+        return JsonResponse({
+            'success': True,
+            'data': data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting cell results: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
+
+@login_required(login_url='/login/')  
+def api_get_notebook_cell_summaries(request, notebook_uuid):
+    """Get summaries of all cells for referencing"""
+    try:
+        notebook = get_object_or_404(SQLNotebook, uuid=notebook_uuid, user=request.user)
+        
+        # Get all cells, not just executed ones - agent might want to reference code too
+        cells = notebook.cells.all().order_by('order')
+        
+        summaries = []
+        for cell in cells:
+            cell_data = {
+                'id': cell.id,
+                'name': cell.name,
+                'order': cell.order,
+                'query_preview': cell.query[:100] + '...' if len(cell.query) > 100 else cell.query,
+                'query_full': cell.query,
+                'is_executed': cell.is_executed,
+                'has_results': bool(cell.result) if cell.is_executed else False
+            }
+            
+            # Add result metadata if available
+            if cell.is_executed:
+                result_data = cell.result
+                if result_data and isinstance(result_data, dict):
+                    cell_data.update({
+                        'row_count': len(result_data.get('rows', [])) if 'rows' in result_data else 0,
+                        'columns': result_data.get('columns', []),
+                        'execution_time': cell.execution_time,
+                        'last_executed': cell.updated_at.isoformat() if cell.updated_at else None
+                    })
+                else:
+                    # Cell was executed but no results stored (privacy mode)
+                    cell_data.update({
+                        'row_count': 0,
+                        'columns': [],
+                        'execution_time': cell.execution_time,
+                        'last_executed': cell.updated_at.isoformat() if cell.updated_at else None
+                    })
+            
+            summaries.append(cell_data)
+        
+        return JsonResponse({
+            'success': True,
+            'cells': summaries
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting notebook cell summaries: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        }, status=500)
 
 @require_POST
 @login_required

@@ -15,6 +15,16 @@ import logging
 # Set up logging
 logger = logging.getLogger(__name__)
 
+# SQLAlchemy-based execution (alternative approach)
+try:
+    from sqlalchemy import create_engine, text, MetaData, inspect
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import QueuePool
+    SQLALCHEMY_AVAILABLE = True
+except ImportError:
+    SQLALCHEMY_AVAILABLE = False
+    logger.warning("SQLAlchemy not available, using direct database connectors")
+
 def serialize_value(value: Any) -> Any:
     """Convert non-serializable values to serializable ones"""
     if isinstance(value, datetime.datetime):
@@ -202,66 +212,102 @@ async def execute_mysql_query_async(connection_info, query, query_timeout=None):
         raise Exception(f"MySQL Error: {e}")
 
 def execute_mysql_query(connection_info, query, query_timeout=None):
-    """Synchronous wrapper for async MySQL query execution"""
+    """Synchronous MySQL query execution with improved timeout handling"""
     try:
         if query_timeout is None:
             query_timeout = get_db_config()['query_timeout']
-        # Get or create event loop
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
         
-        # If the loop is already running (e.g., in Django async views), 
-        # we need to run in a thread pool
-        if loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as executor:
-                future = executor.submit(asyncio.run, execute_mysql_query_async(connection_info, query, query_timeout))
-                return future.result()
-        else:
-            return loop.run_until_complete(execute_mysql_query_async(connection_info, query, query_timeout))
-            
-    except Exception as e:
-        # Fallback to synchronous connection if async fails
-        logger.warning(f"Async execution failed, falling back to sync: {e}")
+        # Always use the synchronous execution to avoid async loop issues in Django
         return execute_mysql_query_fallback(connection_info, query, query_timeout)
+    except Exception as e:
+        logger.error(f"MySQL query execution failed: {e}")
+        raise
 
 def execute_mysql_query_fallback(connection_info, query, query_timeout=None):
-    """Fallback synchronous MySQL query execution with timeout"""
+    """Synchronous MySQL query execution with improved timeout and error handling"""
     try:
         if query_timeout is None:
             query_timeout = get_db_config()['query_timeout']
-        # Configure connection with timeout
-        config = {
+        
+        # Configure connection with proper timeout handling
+        connection_config = {
             'host': connection_info.get('host'),
-            'port': connection_info.get('port'),
+            'port': connection_info.get('port', 3306),
             'database': connection_info.get('database'),
             'user': connection_info.get('username'),
             'password': connection_info.get('password'),
-            'buffered': True,
             'connection_timeout': get_db_config()['connection_timeout'],
             'autocommit': True,
-            'charset': 'utf8mb4'
+            'charset': 'utf8mb4',
+            'use_unicode': True
         }
         
-        conn = mysql.connector.connect(**config)
+        # Add SSL config if present
+        if connection_info.get('ssl_ca'):
+            connection_config.update({
+                'ssl_ca': connection_info.get('ssl_ca'),
+                'ssl_cert': connection_info.get('ssl_cert'),
+                'ssl_key': connection_info.get('ssl_key'),
+                'ssl_verify_cert': True
+            })
         
-        cursor = conn.cursor(dictionary=True)
+        logger.debug(f"Connecting to MySQL with host: {connection_config['host']}")
+        conn = mysql.connector.connect(**connection_config)
+        cursor = conn.cursor()
+        
+        # Set timeouts with improved error handling
+        timeout_queries = []
+        
+        # Try modern MySQL timeout setting first
+        try:
+            timeout_queries.append(f"SET SESSION max_execution_time = {int(query_timeout * 1000)}")
+        except Exception as e:
+            logger.debug(f"max_execution_time not supported: {e}")
+        
+        # Try wait_timeout as fallback
+        try:
+            timeout_queries.append(f"SET SESSION wait_timeout = {int(query_timeout)}")
+        except Exception as e:
+            logger.debug(f"wait_timeout not supported: {e}")
+        
+        # Try interactive_timeout as additional fallback
+        try:
+            timeout_queries.append(f"SET SESSION interactive_timeout = {int(query_timeout)}")
+        except Exception as e:
+            logger.debug(f"interactive_timeout not supported: {e}")
+        
+        # Execute timeout settings that work
+        for timeout_query in timeout_queries:
+            try:
+                cursor.execute(timeout_query)
+                logger.debug(f"Successfully set: {timeout_query}")
+                break  # Use the first one that works
+            except mysql.connector.Error as e:
+                if e.errno == 1193:  # Unknown system variable
+                    logger.debug(f"Timeout setting not supported: {timeout_query}, error: {e}")
+                    continue
+                else:
+                    # Other errors should be re-raised
+                    raise
+        
         start_time = time.time()
         
-        # Set session timeout for the query
-        cursor.execute(f"SET SESSION max_execution_time = {query_timeout * 1000}")  # Convert to milliseconds
+        # Execute the main query
         cursor.execute(query)
         
         # Handle different query types
-        if query.strip().upper().startswith(('SELECT', 'SHOW', 'DESCRIBE', 'EXPLAIN')):
+        if query.strip().upper().startswith(('SELECT', 'SHOW', 'DESCRIBE', 'EXPLAIN', 'WITH')):
             rows = cursor.fetchall()
-            # Serialize each row to handle datetime objects
-            serialized_rows = [serialize_row(row) for row in rows]
+            
+            # Get column names
+            columns = [desc[0] for desc in cursor.description] if cursor.description else []
+            
+            # Convert rows to list of dicts and serialize
+            row_dicts = [dict(zip(columns, row)) for row in rows]
+            serialized_rows = [serialize_row(row_dict) for row_dict in row_dicts]
+            
             result = {
-                'columns': [column[0] for column in cursor.description],
+                'columns': columns,
                 'rows': serialized_rows,
                 'rowCount': len(rows),
                 'time': time.time() - start_time
@@ -278,7 +324,11 @@ def execute_mysql_query_fallback(connection_info, query, query_timeout=None):
         return result
         
     except mysql.connector.Error as err:
+        logger.error(f"MySQL Error: {err}")
         raise Exception(f"MySQL Error: {err}")
+    except Exception as e:
+        logger.error(f"General MySQL execution error: {e}")
+        raise Exception(f"MySQL Error: {e}")
 
 async def get_mysql_schema_info_async(connection_info):
     """Get schema, tables, and column information from MySQL database using connection pool"""
@@ -936,4 +986,126 @@ def execute_redshift_query(connection_info, query):
     """Execute query in Redshift database (placeholder function)"""
     # This is a placeholder function until proper Redshift implementation is added
     raise Exception("Redshift connection not yet implemented. Please use MySQL connection instead.")
+
+
+# SQLAlchemy-based execution (alternative approach)
+def execute_query_sqlalchemy(connection_info, query, query_timeout=None):
+    """
+    Execute SQL query using SQLAlchemy for better connection handling
+    Returns (success: bool, result: Any)
+    """
+    if not SQLALCHEMY_AVAILABLE:
+        # Fallback to direct execution
+        return execute_query(connection_info, query, query_timeout)
+    
+    try:
+        if query_timeout is None:
+            query_timeout = get_db_config()['query_timeout']
+        
+        connection_type = connection_info.get('type', 'mysql').lower()
+        
+        # Build SQLAlchemy connection string
+        if connection_type == 'mysql':
+            driver = 'mysql+mysqlconnector'
+            port = connection_info.get('port', 3306)
+        elif connection_type == 'postgresql':
+            driver = 'postgresql+psycopg2'
+            port = connection_info.get('port', 5432)
+        else:
+            # Fallback to direct execution for unsupported types
+            return execute_query(connection_info, query, query_timeout)
+        
+        # Build connection URL
+        username = connection_info.get('username', '')
+        password = connection_info.get('password', '')
+        host = connection_info.get('host')
+        database = connection_info.get('database')
+        
+        if username and password:
+            connection_url = f"{driver}://{username}:{password}@{host}:{port}/{database}"
+        else:
+            connection_url = f"{driver}://{host}:{port}/{database}"
+        
+        # Create engine with connection pooling
+        engine = create_engine(
+            connection_url,
+            poolclass=QueuePool,
+            pool_size=5,
+            max_overflow=10,
+            pool_timeout=30,
+            pool_recycle=3600,
+            connect_args={
+                'connect_timeout': get_db_config()['connection_timeout']
+            }
+        )
+        
+        start_time = time.time()
+        
+        # Execute query
+        with engine.connect() as conn:
+            # Set query timeout if supported
+            if connection_type == 'mysql':
+                try:
+                    conn.execute(text(f"SET SESSION max_execution_time = {int(query_timeout * 1000)}"))
+                except Exception:
+                    try:
+                        conn.execute(text(f"SET SESSION wait_timeout = {int(query_timeout)}"))
+                    except Exception:
+                        pass  # Continue without timeout setting
+            elif connection_type == 'postgresql':
+                try:
+                    conn.execute(text(f"SET statement_timeout = '{int(query_timeout * 1000)}ms'"))
+                except Exception:
+                    pass  # Continue without timeout setting
+            
+            # Execute main query
+            result = conn.execute(text(query))
+            
+            # Handle different query types
+            if query.strip().upper().startswith(('SELECT', 'SHOW', 'DESCRIBE', 'EXPLAIN', 'WITH')):
+                rows = result.fetchall()
+                columns = list(result.keys())
+                
+                # Convert rows to list of dicts and serialize
+                row_dicts = [dict(zip(columns, row)) for row in rows]
+                serialized_rows = [serialize_row(row_dict) for row_dict in row_dicts]
+                
+                query_result = {
+                    'columns': columns,
+                    'rows': serialized_rows,
+                    'rowCount': len(rows),
+                    'time': time.time() - start_time
+                }
+            else:
+                # For INSERT, UPDATE, DELETE, etc.
+                query_result = {
+                    'rowCount': result.rowcount,
+                    'time': time.time() - start_time
+                }
+        
+        engine.dispose()  # Clean up
+        return True, query_result
+        
+    except Exception as e:
+        logger.error(f"SQLAlchemy execution error: {e}")
+        return False, f"Database Error: {e}"
+
+
+def execute_query_with_fallback(connection_info, query, query_timeout=None):
+    """
+    Execute query with SQLAlchemy first, fallback to direct connection if needed
+    """
+    # Try SQLAlchemy first (better connection handling)
+    if SQLALCHEMY_AVAILABLE:
+        try:
+            success, result = execute_query_sqlalchemy(connection_info, query, query_timeout)
+            if success:
+                return success, result
+            else:
+                logger.warning(f"SQLAlchemy execution failed: {result}, falling back to direct connection")
+        except Exception as e:
+            logger.warning(f"SQLAlchemy execution error: {e}, falling back to direct connection")
+    
+    # Fallback to direct connection
+    return execute_query(connection_info, query, query_timeout)
 
