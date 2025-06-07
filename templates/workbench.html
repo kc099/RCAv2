@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 {% load static %}
 
-{% block title %}MySQL Database - Datasage Workbench{% endblock %}
+{% block title %}{% if connection.type == 'postgresql' %}PostgreSQL Database{% elif connection.type == 'mysql' %}MySQL Database{% else %}Database{% endif %} - Datasage Workbench{% endblock %}
 
 {% block content %}
 <!-- CSRF Token for AJAX requests -->
@@ -11,7 +11,7 @@
     <!-- Header with database info -->
     <header class="workbench-header">
         <div class="database-info">
-            <h1>MySQL Database</h1>
+            <h1>{% if connection.type == 'postgresql' %}PostgreSQL Database{% elif connection.type == 'mysql' %}MySQL Database{% else %}Database{% endif %}</h1>
             <span class="connection-details">{{ connection.host }} | {{ connection.database }}</span>
         </div>
         <div class="user-actions">

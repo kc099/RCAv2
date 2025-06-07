@@ -29,19 +29,19 @@
                     <!-- Databases Tab -->
                     <div class="tab-pane active" id="databases">
                         <div class="connection-cards">
-                            <div class="connection-card" data-type="redshift" onclick="showModal('redshift')">
-                                <h3>Amazon Redshift</h3>
-                                <p>Connect to your Amazon Redshift data warehouse</p>
-                            </div>
-                            
-                            <div class="connection-card" data-type="snowflake" onclick="showModal('snowflake')">
-                                <h3>Snowflake</h3>
-                                <p>Connect to your Snowflake data platform</p>
+                            <div class="connection-card" data-type="postgresql" onclick="showModal('postgresql')">
+                                <h3>PostgreSQL</h3>
+                                <p>Connect to your PostgreSQL database server</p>
                             </div>
                             
                             <div class="connection-card" data-type="mysql" onclick="showModal('mysql')">
                                 <h3>MySQL</h3>
                                 <p>Connect to your MySQL database server</p>
+                            </div>
+                            
+                            <div class="connection-card" data-type="redshift" onclick="showModal('redshift')">
+                                <h3>Amazon Redshift</h3>
+                                <p>Connect to your Amazon Redshift data warehouse</p>
                             </div>
                         </div>
                     </div>
@@ -229,14 +229,17 @@
         var title = 'Connect to Database';
         var port = '';
         
-        if (type === 'redshift') {
+        if (type === 'postgresql') {
+            title = 'Connect to PostgreSQL';
+            port = '5432';
+        } else if (type === 'mysql') {
+            title = 'Connect to MySQL';
+            port = '3306';
+        } else if (type === 'redshift') {
             title = 'Connect to Amazon Redshift';
             port = '5439';
         } else if (type === 'snowflake') {
             title = 'Connect to Snowflake';
-        } else if (type === 'mysql') {
-            title = 'Connect to MySQL';
-            port = '3306';
         } else if (type === 's3') {
             title = 'Connect to Amazon S3';
         }

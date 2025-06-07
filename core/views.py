@@ -12,7 +12,8 @@ import json
 import datetime
 from .models import SQLNotebook, SQLCell, DatabaseConnection
 import mysql.connector
-from .db_handlers import execute_mysql_query, execute_redshift_query, get_mysql_schema_info
+import psycopg2
+from .db_handlers import execute_mysql_query, execute_postgresql_query, execute_redshift_query, get_mysql_schema_info, get_postgresql_schema_info
 
 # DateTimeEncoder has been removed as we now handle datetime serialization at the database level
 
@@ -183,6 +184,76 @@ def validate_connection(request):
             connection_config = {
                 'type': 'mysql',
                 'host': host,  # Use 'host' consistently throughout the application
+                'port': int(port),
+                'database': database,
+                'username': username,
+                'password': password  # This will be securely stored in the session
+            }
+            
+            request.session['db_connection'] = connection_config
+            request.session['db_connection_id'] = connection.id
+            request.session.modified = True
+            
+            return JsonResponse({
+                "success": True, 
+                "redirect_url": reverse('core:workbench'),
+                "connection_id": connection.id
+            })
+            
+        except Exception as e:
+            return JsonResponse({"success": False, "error": str(e)})
+    
+    elif connection_type == 'postgresql':
+        # Get PostgreSQL connection parameters
+        host = request.POST.get('mysql_host')  # The form uses mysql_* field names for all database types
+        port = request.POST.get('mysql_port', '5432')
+        database = request.POST.get('mysql_database')
+        username = request.POST.get('mysql_username')
+        password = request.POST.get('mysql_password')
+        
+        print(f"Attempting to connect to PostgreSQL server: {host}:{port} database: {database} user: {username}")
+        
+        try:
+            # Import configuration from db_handlers
+            from .db_handlers import get_db_config
+            
+            # Validate the connection
+            db_config = get_db_config()
+            conn = psycopg2.connect(
+                host=host,
+                port=int(port),
+                database=database,
+                user=username,
+                password=password,
+                connect_timeout=db_config['connection_timeout']
+            )
+            
+            # Test the connection by executing a simple query
+            cursor = conn.cursor()
+            cursor.execute('SELECT 1')
+            cursor.fetchall()
+            cursor.close()
+            conn.close()
+            
+            print(f"Successfully connected to PostgreSQL server at {host}:{port}")
+            
+            # Create a DatabaseConnection object with encrypted credentials
+            connection = DatabaseConnection.objects.create(
+                name=f"{database} on {host}",
+                description=f"PostgreSQL connection to {database}",
+                connection_type='postgresql',
+                host=host,
+                port=int(port),
+                database=database,
+                username=username,
+                password=password,  # Will be encrypted in the model's save method
+                user=request.user
+            )
+            
+            # Store connection info in session with explicit values to ensure nothing is lost
+            connection_config = {
+                'type': 'postgresql',
+                'host': host,
                 'port': int(port),
                 'database': database,
                 'username': username,
@@ -898,6 +969,8 @@ def execute_sql_query(connection_info, query, query_timeout=None):
     
     if connection_type == 'mysql':
         return execute_mysql_query(connection_info, query, query_timeout)
+    elif connection_type == 'postgresql':
+        return execute_postgresql_query(connection_info, query, query_timeout)
     elif connection_type == 'redshift':
         return execute_redshift_query(connection_info, query)
     else:
@@ -911,6 +984,8 @@ def get_database_schema(connection_info):
     
     if connection_type == 'mysql':
         return get_mysql_schema_info(connection_info)
+    elif connection_type == 'postgresql':
+        return get_postgresql_schema_info(connection_info)
     elif connection_type == 'redshift':
         # TODO: Implement Redshift schema retrieval
         raise Exception("Redshift schema retrieval not yet implemented.")

@@ -91,3 +91,9 @@ migrations/
 staticfiles/
 
 *.json
+*.xlsx
+
+downloadsql.py
+upload_postgres.py
+viewpostgres.py
+postgresql.py

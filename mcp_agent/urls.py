@@ -9,5 +9,5 @@ urlpatterns = [
     
     # Conversation management endpoints
     path('conversations/', views.list_conversations, name='list_conversations'),
-    path('conversations/<int:conversation_id>/', views.get_conversation_history, name='conversation_history'),
+    path('conversations/<int:conversation_id>/', views.get_conversation_history, name='get_conversation'),
 ] 

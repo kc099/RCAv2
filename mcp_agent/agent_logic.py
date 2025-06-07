@@ -71,7 +71,9 @@ def get_database_specific_instructions(connection_type: str) -> str:
 """,
         'postgresql': """
 **PostgreSQL-Specific Guidelines:**
-- Use double quotes (") for case-sensitive identifiers
+- CRITICAL: Use double quotes (") for case-sensitive identifiers and column names with special characters
+- ALWAYS quote column names that contain spaces, underscores, or mixed case (e.g., "Order_id", "Customer ID")
+- Schema.table syntax: datasage.customer_info or "datasage"."customer_info"
 - Use LIMIT and OFFSET for pagination
 - Date functions: NOW(), CURRENT_DATE, DATE_TRUNC(), EXTRACT()
 - String functions: CONCAT(), SUBSTRING(), LENGTH(), UPPER(), LOWER()
@@ -80,7 +82,7 @@ def get_database_specific_instructions(connection_type: str) -> str:
 - Boolean values: TRUE/FALSE
 - Rich data types: JSON, JSONB, arrays, custom types
 - Window functions and CTEs (Common Table Expressions)
-- Case-sensitive by default for unquoted identifiers (lowercase)
+- PostgreSQL is case-sensitive for quoted identifiers
 """,
         'snowflake': """
 **Snowflake-Specific Guidelines:**
@@ -185,6 +187,10 @@ def sql_generation_node(state: AgentState) -> AgentState:
         # Add system message with dynamic connection type
         system_prompt = get_system_prompt(state["database_schema"], state["user_nl_query"], connection_type, state["current_iteration"])
         
+        # Log basic schema info for debugging
+        if state["current_iteration"] == 0:  # Only log on first iteration to avoid spam
+            logger.info(f"Agent using {connection_type} connection with schema ({len(state['database_schema'])} chars)")
+        
         # Add conversation history
         for msg in state["messages"]:
             if msg["role"] in ["user", "assistant", "tool_result"]:
@@ -247,13 +253,18 @@ def sql_generation_node(state: AgentState) -> AgentState:
             # Extract the SQL query
             state["current_sql_query"] = current_sql
             
-            # Set final_sql if explicitly stated as final, duplicate detected, or max iterations approaching
-            if (any(phrase in response_content.lower() for phrase in 
-                   ["this is the final", "final query", "final sql", "query is complete", "this completes"]) or
+            # Only mark as final if:
+            # 1. Agent explicitly says it's final AND we're not on first iteration
+            # 2. We detect duplicate SQL (agent repeating same query)
+            # 3. We've hit max iterations
+            explicitly_final = any(phrase in response_content.lower() for phrase in 
+                                 ["this is the final", "final query", "final sql", "query is complete", "this completes"])
+            
+            if ((explicitly_final and state["current_iteration"] > 0) or
                 duplicate_detected or
                 state["current_iteration"] >= state["max_iterations"] - 1):
                 state["final_sql"] = state["current_sql_query"]
-                logger.info(f"Agent marked SQL as final: {state['final_sql'][:50]}... (duplicate: {duplicate_detected}, iteration: {state['current_iteration']})")
+                logger.info(f"Agent marked SQL as final: {state['final_sql'][:50]}... (explicit: {explicitly_final}, duplicate: {duplicate_detected}, iteration: {state['current_iteration']})")
         else:
             state["current_sql_query"] = None
             # If no SQL found and we're not on the first iteration, this might be a termination message

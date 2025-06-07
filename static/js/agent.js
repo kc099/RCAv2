@@ -1210,70 +1210,6 @@ class TextToSQLAgent {
         conversationHistory.scrollTop = conversationHistory.scrollHeight;
     }
 
-    offerSqlInsertion(sql) {
-        const statusArea = document.getElementById('agentStatus');
-        if (!statusArea) return;
-
-        statusArea.innerHTML = `
-            <div class="alert alert-success d-flex justify-content-between align-items-center">
-                <span><i class="fas fa-check-circle me-2"></i>SQL query generated successfully!</span>
-                <button class="btn btn-primary btn-sm" onclick="textToSQLAgent.insertSqlToNotebook('${this.escapeSql(sql)}')">
-                    <i class="fas fa-plus"></i> Add to Notebook
-                </button>
-            </div>
-        `;
-    }
-
-    escapeSql(sql) {
-        return sql.replace(/'/g, "\\'").replace(/\n/g, '\\n');
-    }
-
-    insertSqlToNotebook(sql) {
-        // Clean up the SQL
-        const cleanSql = sql.replace(/\\'/g, "'").replace(/\\n/g, '\n');
-        
-        // Try different methods to add to notebook
-        if (typeof window.notebook !== 'undefined' && window.notebook.addCell) {
-            // Method 1: Use global notebook object
-            window.notebook.addCell(cleanSql);
-            this.showSuccessStatus('SQL added to notebook successfully!');
-        } else if (typeof addCellToNotebook === 'function') {
-            // Method 2: Use global function
-            addCellToNotebook(cleanSql);
-            this.showSuccessStatus('SQL added to notebook successfully!');
-        } else {
-            // Method 3: Trigger the add cell button and set content
-            const addButton = document.getElementById('add-cell-btn');
-            if (addButton) {
-                addButton.click();
-                
-                // Wait a bit for the cell to be created, then set its content
-                setTimeout(() => {
-                    const cells = document.querySelectorAll('.sql-cell');
-                    const lastCell = cells[cells.length - 1];
-                    if (lastCell) {
-                        const textarea = lastCell.querySelector('textarea, .CodeMirror');
-                        if (textarea) {
-                            if (textarea.CodeMirror) {
-                                textarea.CodeMirror.setValue(cleanSql);
-                            } else {
-                                textarea.value = cleanSql;
-                            }
-                            this.showSuccessStatus('SQL added to notebook successfully!');
-                        }
-                    }
-                }, 100);
-            } else {
-                // Fallback: copy to clipboard
-                navigator.clipboard.writeText(cleanSql).then(() => {
-                    this.showSuccessStatus('SQL copied to clipboard! Paste it into a new cell.');
-                }).catch(() => {
-                    this.showError('Unable to add SQL to notebook. Please copy and paste manually.');
-                });
-            }
-        }
-    }
-
     clearConversation() {
         this.currentConversationId = null;
         const conversationHistory = document.getElementById('conversationHistory');
@@ -1434,6 +1370,8 @@ class TextToSQLAgent {
         }
         this.handleNlQuerySubmit();
     }
+    
+
 }
 
 // Initialize the agent when DOM is loaded
