@@ -177,9 +177,15 @@ def get_system_prompt(database_schema: str, user_nl_query: str, connection_type:
 - Continue iterating only if you need more data to provide a complete answer
 - Avoid making unnecessary cosmetic improvements to working queries
 
+**CRITICAL OUTPUT REQUIREMENTS:**
+1. **ALWAYS include SQL in every response** - wrap in ```sql blocks
+2. **Never respond without providing a SQL query** unless you're saying it's final
+3. If you can't improve the query, repeat the last working query and say "This is the final query"
+4. **Responses without SQL will cause infinite loops** - avoid at all costs
+
 **Output Format:**
 - Start with a clear explanation of your approach
-- Always include: ```sql\nYOUR_SQL_HERE\n```
+- **MANDATORY**: Always include ```sql\nYOUR_SQL_HERE\n```
 - After the SQL, explain what the query does and why you chose this approach
 - For final answers: Include "This is the final query" in your response
 - **Be conversational and educational** - help the user understand the SQL
@@ -187,7 +193,7 @@ def get_system_prompt(database_schema: str, user_nl_query: str, connection_type:
 Begin by analyzing the schema and user request to generate an appropriate {connection_type.upper()} SQL query."""
 
     if iteration > 0:
-        base_prompt += f"\n\n**ITERATION {iteration}:** Review the previous execution results. If there were errors, fix them. If the query was successful, evaluate whether you have enough information to provide a complete answer or if you need additional data to fully address the user's request."
+        base_prompt += f"\n\n**ITERATION {iteration}:** Review the previous execution results. If there were errors, fix them. If the query was successful, either:\n1. Provide an improved query if you need more data, OR\n2. Repeat the same working query and say 'This is the final query' to complete the task\n**CRITICAL: You MUST include a SQL query in your response - never respond with just text!**"
         
     return base_prompt
 
@@ -195,6 +201,18 @@ Begin by analyzing the schema and user request to generate an appropriate {conne
 def sql_generation_node(state: AgentState) -> AgentState:
     """LLM node that generates SQL using Anthropic API"""
     try:
+        # Safety check for iteration limits to prevent infinite loops
+        ITERATION_LIMIT = 10
+        if state["current_iteration"] >= ITERATION_LIMIT:
+            logger.error(f"SQL generation node called at iteration {state['current_iteration']}, which exceeds limit {ITERATION_LIMIT}")
+            state["error_message"] = f"Maximum iterations ({ITERATION_LIMIT}) exceeded"
+            state["should_continue"] = False
+            # Use last successful SQL if available
+            if state.get("last_successful_sql"):
+                state["final_sql"] = state["last_successful_sql"]
+                logger.info(f"Using last successful SQL as final due to iteration limit: {state['final_sql'][:50]}...")
+            return state
+        
         # Initialize Anthropic client
         anthropic_client = Anthropic(
             api_key=settings.ANTHROPIC_API_KEY
@@ -537,6 +555,21 @@ def decide_next_step(state: AgentState) -> str:
         # LLM provided SQL, execute it
         logger.info(f"Executing SQL from iteration {state['current_iteration']}")
         return "execute_sql"
+    elif last_role == "assistant" and not state.get("current_sql_query"):
+        # LLM provided response but no SQL - increment iteration and check limits
+        state["current_iteration"] += 1
+        logger.warning(f"Agent generated response without SQL on iteration {state['current_iteration'] - 1}, incrementing to {state['current_iteration']}")
+        
+        # Check if we've hit the limit after incrementing
+        if state["current_iteration"] >= ITERATION_LIMIT:
+            logger.info(f"Max iterations ({ITERATION_LIMIT}) reached after no-SQL response")
+            if state.get("last_successful_sql"):
+                state["final_sql"] = state["last_successful_sql"]
+                logger.info(f"Using last successful SQL as final: {state['final_sql'][:50]}...")
+            return END
+        
+        # Continue with SQL generation
+        return "generate_sql"
     elif last_role == "tool_result":
         # Tool executed, check if we should continue
         tool_content = last_message.get("content", "").lower()
@@ -570,6 +603,15 @@ def decide_next_step(state: AgentState) -> str:
             # Increment iteration before continuing
             state["current_iteration"] += 1
             logger.info(f"SQL failed, continuing to iteration {state['current_iteration']}")
+            
+            # Check if we've hit the limit after incrementing
+            if state["current_iteration"] >= ITERATION_LIMIT:
+                logger.info(f"Max iterations ({ITERATION_LIMIT}) reached after SQL failure")
+                if state.get("last_successful_sql"):
+                    state["final_sql"] = state["last_successful_sql"]
+                    logger.info(f"Using last successful SQL as final: {state['final_sql'][:50]}...")
+                return END
+            
             return "generate_sql"
         
         # If query succeeded, let agent decide next steps
@@ -577,15 +619,43 @@ def decide_next_step(state: AgentState) -> str:
             # Increment iteration and let agent decide if more work is needed
             state["current_iteration"] += 1
             logger.info(f"SQL executed successfully, continuing to iteration {state['current_iteration']} - agent will decide if final")
+            
+            # Check if we've hit the limit after incrementing
+            if state["current_iteration"] >= ITERATION_LIMIT:
+                logger.info(f"Max iterations ({ITERATION_LIMIT}) reached after successful execution")
+                if state.get("last_successful_sql"):
+                    state["final_sql"] = state["last_successful_sql"]
+                    logger.info(f"Using last successful SQL as final: {state['final_sql'][:50]}...")
+                return END
+            
             return "generate_sql"
         
         # Default continue with incremented iteration
         state["current_iteration"] += 1
         logger.info(f"Continuing to iteration {state['current_iteration']}")
+        
+        # Check if we've hit the limit after incrementing
+        if state["current_iteration"] >= ITERATION_LIMIT:
+            logger.info(f"Max iterations ({ITERATION_LIMIT}) reached in default continue")
+            if state.get("last_successful_sql"):
+                state["final_sql"] = state["last_successful_sql"]
+                logger.info(f"Using last successful SQL as final: {state['final_sql'][:50]}...")
+            return END
+        
         return "generate_sql"
     else:
-        # Default to SQL generation
-        logger.debug("Defaulting to SQL generation")
+        # Default case - increment iteration and check limits
+        state["current_iteration"] += 1
+        logger.debug(f"Default case - incrementing to iteration {state['current_iteration']}")
+        
+        # Check if we've hit the limit
+        if state["current_iteration"] >= ITERATION_LIMIT:
+            logger.info(f"Max iterations ({ITERATION_LIMIT}) reached in default case")
+            if state.get("last_successful_sql"):
+                state["final_sql"] = state["last_successful_sql"]
+                logger.info(f"Using last successful SQL as final: {state['final_sql'][:50]}...")
+            return END
+        
         return "generate_sql"
 
 
