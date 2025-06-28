@@ -20,7 +20,9 @@ from .models import AgentConversation, ChatMessage
 logger = logging.getLogger(__name__)
 
 # Agent state management
-user_agents = {}  # In-memory storage for user agents
+# Note: We don't cache agent instances because LangGraph agents maintain internal state
+# between invocations, which can cause iteration counts and other state to persist
+# across different user queries. Creating fresh agents ensures clean state.
 
 
 class AgentState(TypedDict):
@@ -40,6 +42,7 @@ class AgentState(TypedDict):
     referenced_cells: List[Dict[str, Any]]  # Referenced cells data (deprecated)
     selected_schemas: List[Dict[str, Any]]  # Selected schemas for focused context
     last_successful_sql: Optional[str]  # Last SQL that executed successfully
+    start_time: float  # Workflow start time for timeout tracking
 
 
 def get_database_specific_instructions(connection_type: str) -> str:
@@ -295,13 +298,32 @@ def sql_generation_node(state: AgentState) -> AgentState:
                 "content": f"Please generate a SQL query for: {state['user_nl_query']}"
             })
         
-        # Call Anthropic API
-        response = anthropic_client.messages.create(
-            model="claude-3-5-sonnet-20241022",  # Using Claude 3.5 Sonnet
-            max_tokens=4000,
-            system=system_prompt,
-            messages=messages
-        )
+        # Call Anthropic API with timeout
+        try:
+            # Set a reasonable timeout for API calls (20 seconds)
+            response = anthropic_client.messages.create(
+                model="claude-3-5-sonnet-20241022",  # Using Claude 3.5 Sonnet
+                max_tokens=4000,
+                system=system_prompt,
+                messages=messages,
+                timeout=20.0  # 20 second timeout
+            )
+        except Exception as api_error:
+            logger.error(f"Anthropic API error: {api_error}")
+            # If API times out, try to use last successful SQL or terminate gracefully
+            if state.get("last_successful_sql"):
+                state["final_sql"] = state["last_successful_sql"] 
+                state["messages"].append({
+                    "role": "assistant",
+                    "content": f"API timeout occurred. Using previous successful query as final result.",
+                    "timestamp": None
+                })
+                logger.info("API timeout - using last successful SQL as final")
+                return state
+            else:
+                state["error_message"] = f"API timeout: {api_error}"
+                state["should_continue"] = False
+                return state
         
         response_content = response.content[0].text
         
@@ -511,9 +533,22 @@ def decide_next_step(state: AgentState) -> str:
     
     # Set iteration limit to 10 steps
     ITERATION_LIMIT = 10
+    # Set overall workflow timeout to 40 seconds (under typical 60s worker timeout)
+    WORKFLOW_TIMEOUT = 40
     
     logger.debug(f"Deciding next step for iteration {state['current_iteration']}")
     logger.debug(f"Messages count: {len(state['messages'])}")
+    
+    # Check overall workflow timeout
+    import time
+    if state.get("start_time"):
+        elapsed_time = time.time() - state["start_time"]
+        if elapsed_time > WORKFLOW_TIMEOUT:
+            logger.warning(f"Workflow timeout after {elapsed_time:.1f} seconds")
+            if state.get("last_successful_sql"):
+                state["final_sql"] = state["last_successful_sql"]
+                logger.info(f"Using last successful SQL due to workflow timeout: {state['final_sql'][:50]}...")
+            return END
     
     # Check iteration limits - if exceeded, use last successful SQL as final
     if state["current_iteration"] >= ITERATION_LIMIT:
@@ -698,11 +733,18 @@ def create_agent_graph() -> StateGraph:
     return agent
 
 
-def get_or_create_agent_for_user(user_id: int):
-    """Get or create agent instance for a user"""
-    if user_id not in user_agents:
-        user_agents[user_id] = create_agent_graph()
-    return user_agents[user_id]
+def create_fresh_agent_for_user(user_id: int):
+    """Create a fresh agent instance for a user to avoid state persistence issues
+    
+    LangGraph agents maintain internal state between invocations, which can cause:
+    - Iteration counts to carry over from previous queries
+    - State variables to persist across different conversations  
+    - Unexpected behavior in multi-query sessions
+    
+    Creating a fresh agent for each request ensures clean state and proper iteration tracking.
+    """
+    logger.debug(f"Creating fresh agent instance for user {user_id}")
+    return create_agent_graph()
 
 
 def create_and_execute_sql_cell(notebook: SQLNotebook, sql_query: str, 

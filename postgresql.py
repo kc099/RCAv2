@@ -6,11 +6,11 @@ from contextlib import contextmanager
 
 # Database configuration
 DB_CONFIG = {
-    'host': 'ls-9b7c54759477db8fe2208ab4137a0b5ed76c4ffc.c34ywg088jkw.ap-south-1.rds.amazonaws.com',  # Replace with your actual host
+    'host': '34.84.59.161',  # Replace with your actual host
     'port': '5432',                               # Default PostgreSQL port
-    'database': 'dbmaster',           # Replace with your default DB name
-    'user': 'kc099',                      # Replace with your username
-    'password': 'P}tD:`u:!$O7]uMoarzQfb1Kk67#9lDm'                   # Replace with your password
+    'database': 'ecomm',           # Replace with your default DB name
+    'user': 'postgres',                      # Replace with your username
+    'password': '12345'                   # Replace with your password
 }
 
 # Alternative: Use environment variables for security

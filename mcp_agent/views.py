@@ -10,7 +10,7 @@ from django.core.exceptions import ValidationError
 from core.models import DatabaseConnection, SQLNotebook, SQLCell
 from core.db_handlers import get_schema_for_connection, execute_query, get_mysql_schema_info, format_schema_for_llm
 from .models import AgentConversation, ChatMessage
-from .agent_logic import get_or_create_agent_for_user, AgentState
+from .agent_logic import create_fresh_agent_for_user, AgentState
 from core.views import get_database_schema
 
 logger = logging.getLogger(__name__)
@@ -234,6 +234,7 @@ def text_to_sql_agent_view(request):
         })
         
         # Initialize agent state
+        import time
         agent_state = AgentState(
             messages=message_history,
             current_sql_query=None,
@@ -247,15 +248,20 @@ def text_to_sql_agent_view(request):
             final_sql=None,
             should_continue=True,
             error_message=None,
-            selected_schemas=selected_schemas
+            selected_schemas=selected_schemas,
+            start_time=time.time()  # Track workflow start time for timeout
         )
         
-        # Get agent and invoke
-        agent = get_or_create_agent_for_user(request.user.id)
+        logger.debug(f"Initialized fresh agent state: iteration={agent_state['current_iteration']}, messages={len(agent_state['messages'])}")
+        
+        # Get fresh agent and invoke
+        agent = create_fresh_agent_for_user(request.user.id)
         
         try:
-            # Run the agent
+            # Run the agent with fresh state
+            logger.info(f"Starting agent workflow for user {request.user.id}, conversation {conversation.id}")
             final_state = agent.invoke(agent_state)
+            logger.info(f"Agent workflow completed for user {request.user.id}, final iteration: {final_state.get('current_iteration', 0)}")
             
             # Save new messages to database
             new_messages = []

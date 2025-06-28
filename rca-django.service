@@ -1,0 +1,33 @@
+[Unit]
+Description=RCA Django Application
+Requires=postgresql.service
+After=network.target postgresql.service
+
+[Service]
+Type=notify
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/RCAv2
+Environment="PATH=/home/ubuntu/RCAv2/.venv/bin"
+ExecStart=/home/ubuntu/RCAv2/.venv/bin/gunicorn --config gunicorn.conf.py rca.wsgi:application
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=30
+PrivateTmp=true
+
+# Restart settings
+Restart=on-failure
+RestartSec=3
+
+# Security settings
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/home/ubuntu/RCAv2
+ProtectHome=yes
+
+# Resource limits
+LimitNOFILE=4096
+LimitNPROC=4096
+
+[Install]
+WantedBy=multi-user.target 
