@@ -49,10 +49,22 @@
             {% if notebooks %}
             <div class="notebooks-list">
                 {% for notebook in notebooks %}
-                <a href="{% url 'core:open_notebook' notebook.uuid %}" class="notebook-list-item">
-                    <div class="notebook-title">{{ notebook.title }}</div>
-                    <div class="notebook-modified">{{ notebook.last_modified|date:"M d, Y H:i" }}</div>
-                </a>
+                <div class="notebook-list-item">
+                    <a href="{% url 'core:open_notebook' notebook.uuid %}" class="notebook-link">
+                        <div class="notebook-content">
+                            <div class="notebook-title">{{ notebook.title }}</div>
+                            <div class="notebook-modified">{{ notebook.last_modified|date:"M d, Y H:i" }}</div>
+                        </div>
+                    </a>
+                    <div class="notebook-actions">
+                        <button class="delete-notebook-btn" 
+                                data-notebook-uuid="{{ notebook.uuid }}" 
+                                data-notebook-title="{{ notebook.title }}"
+                                title="Delete notebook">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
                 {% endfor %}
             </div>
             {% else %}
@@ -67,4 +79,93 @@
 
 {% block extra_css %}
 <link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle delete notebook buttons
+    const deleteButtons = document.querySelectorAll('.delete-notebook-btn');
+    deleteButtons.forEach(button => {
+        button.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const notebookUuid = this.dataset.notebookUuid;
+            const notebookTitle = this.dataset.notebookTitle;
+            
+            if (confirm(`Are you sure you want to delete "${notebookTitle}"?\n\nThis action cannot be undone.`)) {
+                deleteNotebook(notebookUuid, this);
+            }
+        });
+    });
+});
+
+function deleteNotebook(notebookUuid, buttonElement) {
+    // Show loading state
+    const originalContent = buttonElement.innerHTML;
+    buttonElement.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    buttonElement.disabled = true;
+    
+    // Make the delete request
+    fetch(`/notebooks/${notebookUuid}/delete/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Remove the notebook item from the DOM
+            const notebookItem = buttonElement.closest('.notebook-list-item');
+            notebookItem.style.transition = 'opacity 0.3s ease';
+            notebookItem.style.opacity = '0';
+            setTimeout(() => {
+                notebookItem.remove();
+                
+                // Check if there are no notebooks left
+                const notebooksList = document.querySelector('.notebooks-list');
+                if (notebooksList && notebooksList.children.length === 0) {
+                    // Show empty state
+                    const notebooksContainer = document.querySelector('.notebooks-container');
+                    notebooksContainer.innerHTML = `
+                        <div class="empty-state">
+                            <p>You don't have any notebooks yet. Create one from the Connect to Database card above.</p>
+                        </div>
+                    `;
+                }
+            }, 300);
+        } else {
+            // Handle error
+            alert('Failed to delete notebook: ' + (data.error || 'Unknown error'));
+            buttonElement.innerHTML = originalContent;
+            buttonElement.disabled = false;
+        }
+    })
+    .catch(error => {
+        console.error('Error deleting notebook:', error);
+        alert('Failed to delete notebook. Please try again.');
+        buttonElement.innerHTML = originalContent;
+        buttonElement.disabled = false;
+    });
+}
+
+// Function to get CSRF token from cookies
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
 {% endblock %}

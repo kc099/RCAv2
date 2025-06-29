@@ -20,6 +20,7 @@ urlpatterns += [
     path('notebooks/', views.notebook_list, name='notebook_list'),
     path('notebooks/create/', views.create_notebook, name='create_notebook'),
     path('notebooks/<uuid:notebook_uuid>/', views.open_notebook, name='open_notebook'),
+    path('notebooks/<uuid:notebook_uuid>/delete/', views.delete_notebook, name='delete_notebook'),
     path('notebooks/create/connection/<int:connection_id>/', views.create_notebook_with_connection, name='create_notebook_with_connection'),
     
     # Database connection routes

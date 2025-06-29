@@ -627,6 +627,25 @@ def delete_connection(request, connection_id):
     })
 
 @login_required(login_url='/login/')
+def delete_notebook(request, notebook_uuid):
+    """Delete a notebook"""
+    notebook = get_object_or_404(SQLNotebook, uuid=notebook_uuid, user=request.user)
+    
+    if request.method == 'POST':
+        # Delete the notebook (this will cascade delete all cells)
+        notebook.delete()
+        
+        return JsonResponse({
+            'success': True,
+            'message': 'Notebook deleted successfully'
+        })
+        
+    return JsonResponse({
+        'success': False,
+        'error': 'Invalid request method'
+    }, status=405)
+
+@login_required(login_url='/login/')
 def open_notebook(request, notebook_uuid):
     """Open a specific notebook using its UUID (anonymized URL)"""
     notebook = get_object_or_404(SQLNotebook, uuid=notebook_uuid, user=request.user)

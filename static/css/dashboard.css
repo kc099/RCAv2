@@ -321,7 +321,6 @@ select.form-control {
     padding: 1rem 1.5rem;
     border-bottom: 1px solid var(--border-color);
     transition: background-color 0.2s ease;
-    text-decoration: none;
     color: var(--text-color);
 }
 
@@ -333,15 +332,108 @@ select.form-control {
     background-color: #f9fafb;
 }
 
+.notebook-link {
+    flex: 1;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+    min-width: 0; /* Allow text to truncate */
+}
+
+.notebook-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0; /* Allow text to truncate */
+}
+
 .notebook-title {
     font-size: 1.1rem;
     font-weight: 500;
     color: var(--primary-color);
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
 }
 
 .notebook-modified {
     font-size: 0.85rem;
     color: var(--text-light);
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.notebook-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    margin-left: 1rem;
+}
+
+.delete-notebook-btn {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: #9ca3af;
+    cursor: pointer;
+    padding: 0.5rem;
+    transition: color 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+}
+
+.delete-notebook-btn:hover {
+    color: #dc2626;
+}
+
+.delete-notebook-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.delete-notebook-btn:focus {
+    outline: none;
+}
+
+.delete-notebook-btn i {
+    font-size: 0.875rem;
+}
+
+/* Responsive design for mobile */
+@media (max-width: 640px) {
+    .notebook-list-item {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+    }
+    
+    .notebook-link {
+        margin-bottom: 0.5rem;
+    }
+    
+    .notebook-actions {
+        margin-left: 0;
+        justify-content: flex-end;
+        padding-top: 0.5rem;
+        border-top: 1px solid var(--border-color);
+    }
+    
+    .notebook-title {
+        font-size: 1rem;
+    }
+    
+    .notebook-modified {
+        font-size: 0.8rem;
+    }
 }
 
 /* Empty state styles */
