@@ -414,6 +414,25 @@ class SchemaReferenceManager {
             this.selectedSchemas.set(schemaName, schema);
             this.renderSelectedSchemas();
             this.renderSchemaList(); // Update selection state in dropdown
+            
+            // Clear any existing schema selection warnings
+            this.clearSchemaWarnings();
+        }
+    }
+    
+    clearSchemaWarnings() {
+        const statusArea = document.getElementById('agentStatus');
+        if (statusArea) {
+            const schemaWarning = statusArea.querySelector('.schema-selection-warning');
+            if (schemaWarning) {
+                statusArea.innerHTML = '';
+            }
+        }
+        
+        // Also remove attention pulse from @ button
+        const schemaBtn = document.getElementById('schemaReferenceBtn');
+        if (schemaBtn) {
+            schemaBtn.classList.remove('attention-pulse');
         }
     }
 
@@ -880,6 +899,28 @@ class TextToSQLAgent {
                 (!activeConnectionId ? 'connection ID' : '');
             console.error('Context validation failed:', errorMsg);
             this.showError(`Agent context error: ${errorMsg}. Please refresh the page.`);
+            return;
+        }
+
+        // Validate schema selection when multiple schemas are available
+        // Ensure schemas are loaded before validation
+        this.schemaReferenceManager.loadAvailableSchemas();
+        const availableSchemas = this.schemaReferenceManager.availableSchemas || [];
+        const selectedSchemas = this.schemaReferenceManager.getSelectedSchemasForAgent();
+        
+        if (availableSchemas.length > 1 && selectedSchemas.length === 0) {
+            const schemaNames = availableSchemas.map(s => s.name).join(', ');
+            this.showSchemaSelectionWarning(`Multiple schemas detected (${availableSchemas.length} schemas: ${schemaNames}). Please select specific schemas using the @ button to improve query accuracy and performance.`);
+            
+            // Highlight the @ button to draw attention
+            const schemaBtn = document.getElementById('schemaReferenceBtn');
+            if (schemaBtn) {
+                schemaBtn.classList.add('attention-pulse');
+                setTimeout(() => {
+                    schemaBtn.classList.remove('attention-pulse');
+                }, 3000);
+            }
+            
             return;
         }
 
@@ -1656,6 +1697,21 @@ class TextToSQLAgent {
             statusArea.innerHTML = `
                 <div class="alert alert-warning">
                     <i class="fas fa-exclamation-triangle me-2"></i>${message}
+                </div>
+            `;
+        }
+    }
+
+    showSchemaSelectionWarning(message) {
+        const statusArea = document.getElementById('agentStatus');
+        if (statusArea) {
+            statusArea.innerHTML = `
+                <div class="alert alert-warning schema-selection-warning">
+                    <i class="fas fa-database me-2"></i>${message}
+                    <div class="mt-2">
+                        <small><i class="fas fa-lightbulb me-1"></i> 
+                        Tip: Click the <strong>@</strong> button above to select specific schemas and get better results faster!</small>
+                    </div>
                 </div>
             `;
         }

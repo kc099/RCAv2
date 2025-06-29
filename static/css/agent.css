@@ -709,4 +709,35 @@
     text-align: center;
     color: #6c757d;
     font-style: italic;
+}
+
+/* Attention pulse animation for schema reference button */
+.schema-reference-btn.attention-pulse {
+    animation: attention-pulse 0.6s ease-in-out infinite alternate;
+    background-color: #ff6b35 !important;
+    border-color: #ff6b35 !important;
+    color: white !important;
+}
+
+@keyframes attention-pulse {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(255, 107, 53, 0.7);
+    }
+    100% {
+        transform: scale(1.05);
+        box-shadow: 0 0 0 8px rgba(255, 107, 53, 0);
+    }
+}
+
+/* Enhanced warning styling for schema selection */
+.schema-selection-warning {
+    background: linear-gradient(135deg, #fff3cd 0%, #ffeaa7 100%);
+    border: 1px solid #ffc107;
+    border-left: 4px solid #ff6b35;
+    color: #856404;
+}
+
+.schema-selection-warning .fas {
+    color: #ff6b35;
 } 
