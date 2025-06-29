@@ -32,7 +32,7 @@ DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = ['13.203.165.247', '13.203.107.174', 'localhost', '127.0.0.1']
 
-
+STATICFILES_STORAGE = "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
 # Application definition
 
 INSTALLED_APPS = [
