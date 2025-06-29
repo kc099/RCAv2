@@ -156,15 +156,19 @@ def get_system_prompt(database_schema: str, user_nl_query: str, connection_type:
 3. Generate SQL queries that accurately fulfill the request using {connection_type.upper()}-specific syntax
 4. Present the SQL enclosed in ```sql ... ``` blocks
 5. If SQL execution fails, analyze the error and provide corrected SQL
-6. **If you need intermediate data to answer the question fully, execute simple queries first**
-7. **When you have the complete answer, say "This is the final query"** to complete the task
+6. **IMPORTANT: If your first SQL query successfully answers the user's question completely, say "This is the final query" to end the task**
+
+**Critical Termination Rules:**
+- **For simple queries**: If your first SQL execution succeeds and fully answers the user's question, immediately say "This is the final query"
+- **For complex queries**: Only continue if you genuinely need additional data or intermediate steps to provide a complete answer
+- **Avoid unnecessary refinements**: Don't add percentages, formatting, or extra columns unless specifically requested by the user
+- **One successful query = done**: Unless the user asks for analysis, aggregations, or complex multi-step queries, stop after one successful execution
 
 **Guidelines for Iterations:**
-- **Use intermediate steps only when necessary** (e.g., to understand data structure, check relationships)
-- **Avoid cosmetic improvements** to working SQL (adding percentages, extra columns without purpose)
-- **Focus on answering the user's actual question** rather than embellishing
-- If a simple query already answers the question completely, mark it as final
-- Only continue if you genuinely need more information to provide a complete answer
+- **Primary goal**: Answer the user's question as directly as possible with minimal iterations
+- **Use intermediate steps sparingly**: Only when you need to understand data structure or relationships
+- **Focus on the actual question**: Don't embellish with unnecessary analysis unless requested
+- If a simple query already answers the question completely, mark it as final immediately
 
 **Important Guidelines:**
 - Use the exact table and column names from the schema
@@ -175,28 +179,23 @@ def get_system_prompt(database_schema: str, user_nl_query: str, connection_type:
 - Always validate your SQL syntax for {connection_type.upper()}
 - Provide clear, readable SQL with proper formatting
 
-**Termination Rules:**
-- **Say "This is the final query" when you have completely answered the user's question**
-- Continue iterating only if you need more data to provide a complete answer
-- Avoid making unnecessary cosmetic improvements to working queries
-
 **CRITICAL OUTPUT REQUIREMENTS:**
 1. **ALWAYS include SQL in every response** - wrap in ```sql blocks
 2. **Never respond without providing a SQL query** unless you're saying it's final
-3. If you can't improve the query, repeat the last working query and say "This is the final query"
+3. **For simple requests, aim to complete in 1 iteration** with "This is the final query"
 4. **Responses without SQL will cause infinite loops** - avoid at all costs
 
 **Output Format:**
 - Start with a clear explanation of your approach
 - **MANDATORY**: Always include ```sql\nYOUR_SQL_HERE\n```
 - After the SQL, explain what the query does and why you chose this approach
-- For final answers: Include "This is the final query" in your response
+- **For final answers**: Include "This is the final query" in your response
 - **Be conversational and educational** - help the user understand the SQL
 
 Begin by analyzing the schema and user request to generate an appropriate {connection_type.upper()} SQL query."""
 
     if iteration > 0:
-        base_prompt += f"\n\n**ITERATION {iteration}:** Review the previous execution results. If there were errors, fix them. If the query was successful, either:\n1. Provide an improved query if you need more data, OR\n2. Repeat the same working query and say 'This is the final query' to complete the task\n**CRITICAL: You MUST include a SQL query in your response - never respond with just text!**"
+        base_prompt += f"\n\n**ITERATION {iteration}:** Review the previous execution results. If there were errors, fix them. If the query was successful and fully answered the user's question, repeat the same working query and say 'This is the final query' to complete the task. Only continue with new SQL if you need additional data to provide a complete answer.\n**CRITICAL: You MUST include a SQL query in your response - never respond with just text!**"
         
     return base_prompt
 
@@ -361,13 +360,13 @@ def sql_generation_node(state: AgentState) -> AgentState:
             state["current_sql_query"] = current_sql
             
             # Only mark as final if:
-            # 1. Agent explicitly says it's final AND we're not on first iteration
+            # 1. Agent explicitly says it's final (on any iteration)
             # 2. We detect duplicate SQL (agent repeating same query)
             # 3. We've hit max iterations
             explicitly_final = any(phrase in response_content.lower() for phrase in 
                                  ["this is the final", "final query", "final sql", "query is complete", "this completes"])
             
-            if ((explicitly_final and state["current_iteration"] > 0) or
+            if (explicitly_final or
                 duplicate_detected or
                 state["current_iteration"] >= state["max_iterations"] - 1):
                 state["final_sql"] = state["current_sql_query"]
@@ -533,8 +532,8 @@ def decide_next_step(state: AgentState) -> str:
     
     # Set iteration limit to 10 steps
     ITERATION_LIMIT = 10
-    # Set overall workflow timeout to 40 seconds (under typical 60s worker timeout)
-    WORKFLOW_TIMEOUT = 40
+    # Set overall workflow timeout to 180 seconds (3 minutes) for complex queries
+    WORKFLOW_TIMEOUT = 180
     
     logger.debug(f"Deciding next step for iteration {state['current_iteration']}")
     logger.debug(f"Messages count: {len(state['messages'])}")
@@ -548,6 +547,8 @@ def decide_next_step(state: AgentState) -> str:
             if state.get("last_successful_sql"):
                 state["final_sql"] = state["last_successful_sql"]
                 logger.info(f"Using last successful SQL due to workflow timeout: {state['final_sql'][:50]}...")
+            else:
+                logger.warning("Workflow timeout with no successful SQL to fall back to")
             return END
     
     # Check iteration limits - if exceeded, use last successful SQL as final

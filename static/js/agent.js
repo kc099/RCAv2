@@ -996,8 +996,30 @@ class TextToSQLAgent {
                 
             } else {
                 console.error('Agent request failed:', result.error);
-                this.updateCellContent(cellId, `-- Error: ${result.error}`, 'Error');
-                this.showError(result.error || 'Agent request failed');
+                
+                // If there's a final_sql despite the error (e.g., due to timeout), use it
+                if (result.final_sql && result.final_sql.trim()) {
+                    console.log('Using final_sql despite error:', result.final_sql.substring(0, 50) + '...');
+                    await this.updateCellContent(cellId, result.final_sql);
+                    this.showWarning(`SQL generated but with timeout/warning: ${result.error}`);
+                    
+                    // Execute the cell to show results
+                    setTimeout(() => {
+                        if (typeof executeCell === 'function') {
+                            executeCell(cellId);
+                        } else {
+                            this.executeCellAndGetResults(cellId).then(executionResult => {
+                                if (executionResult.success) {
+                                    this.showSuccessStatus(`SQL executed successfully despite timeout. Returned ${executionResult.rowCount} rows.`);
+                                }
+                            });
+                        }
+                    }, 500);
+                } else {
+                    // No SQL to fall back to, show error
+                    this.updateCellContent(cellId, `-- Error: ${result.error}`, 'Error');
+                    this.showError(result.error || 'Agent request failed');
+                }
             }
 
         } catch (error) {

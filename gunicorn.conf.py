@@ -14,7 +14,7 @@ worker_class = "sync"
 worker_connections = 1000
 
 # Timeout settings - increased to handle text-to-SQL agent processing
-timeout = 120  # 120 seconds worker timeout (increased from default 30s)
+timeout = 200  # 200 seconds worker timeout (for complex 3-minute queries)
 keepalive = 60  # Keep alive timeout
 max_requests = 1000  # Restart workers after this many requests
 max_requests_jitter = 50  # Add randomness to max_requests
