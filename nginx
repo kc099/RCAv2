@@ -1,6 +1,6 @@
 server {
     listen 80;
-    server_name 13.203.165.247; # Or your domain name if you have one
+    server_name 13.203.165.247;
 
     access_log /var/log/nginx/rcav2_django_access.log;
     error_log /var/log/nginx/rcav2_django_error.log;
@@ -8,7 +8,7 @@ server {
     location = /favicon.ico { access_log off; log_not_found off; }
 
     location /static/ {
-        alias /home/ubuntu/RCAv2/staticfiles/; # Path to your collected static files
+        alias /home/ubuntu/RCAv2/staticfiles/;
         
         # Prevent aggressive caching of CSS and JS files during development
         location ~* \.(css|js)$ {
@@ -30,14 +30,16 @@ server {
         add_header Expires "0";
     }
 
-    location /media/ { # If you have user-uploaded media files
-        alias /home/ubuntu/RCAv2/mediafiles/; # Path to your media root
+    location /media/ {
+        alias /home/ubuntu/RCAv2/mediafiles/;
     }
 
     location / {
         include proxy_params;
-        proxy_pass http://localhost:8000; # Must match the Gunicorn bind address
-        proxy_set_header Host $http_host;
+        proxy_pass http://127.0.0.1:8000;
+        
+        # CRITICAL: Use $host instead of $http_host to prevent duplication
+        proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
