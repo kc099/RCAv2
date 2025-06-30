@@ -609,11 +609,11 @@ def decide_next_step(state: AgentState) -> str:
     
     if last_role == "assistant" and state.get("current_sql_query"):
         # LLM provided SQL, execute it
-        logger.info(f"Executing SQL from iteration {state['current_iteration']}")
+        logger.debug(f"Executing SQL from iteration {state['current_iteration']}")
         return "execute_sql"
     elif last_role == "assistant" and not state.get("current_sql_query"):
         # LLM provided response but no SQL - increment iteration and check limits
-        logger.warning(f"Agent generated response without SQL on iteration {state['current_iteration'] - 1}, incrementing to {state['current_iteration']}")
+        logger.debug(f"Agent generated response without SQL on iteration {state['current_iteration'] - 1}, incrementing to {state['current_iteration']}")
         
         # Check if we've hit the limit after incrementing
         if state["current_iteration"] >= ITERATION_LIMIT:
@@ -656,7 +656,7 @@ def decide_next_step(state: AgentState) -> str:
                 return END
             
             # current_iteration already incremented in execute_sql_tool; let agent decide if more work is needed
-            logger.info(f"SQL failed, continuing to iteration {state['current_iteration']}")
+            logger.debug(f"SQL failed, continuing to iteration {state['current_iteration']}")
             
             # Check if we've hit the limit after incrementing
             if state["current_iteration"] >= ITERATION_LIMIT:
@@ -671,7 +671,7 @@ def decide_next_step(state: AgentState) -> str:
         # If query succeeded, let agent decide next steps
         if "successfully" in tool_content:
             # current_iteration already incremented in execute_sql_tool; let agent decide if more work is needed
-            logger.info(f"SQL executed successfully, continuing to iteration {state['current_iteration']} - agent will decide if final")
+            logger.debug(f"SQL executed successfully, continuing to iteration {state['current_iteration']} - agent will decide if final")
             
             # Check if we've hit the limit after incrementing
             if state["current_iteration"] >= ITERATION_LIMIT:
@@ -684,7 +684,7 @@ def decide_next_step(state: AgentState) -> str:
             return "generate_sql"
         
         # Default continue without changing iteration (already incremented in execute_sql_tool)
-        logger.info(f"Continuing to iteration {state['current_iteration']}")
+        logger.debug(f"Continuing to iteration {state['current_iteration']}")
         
         # Check if we've hit the limit after incrementing
         if state["current_iteration"] >= ITERATION_LIMIT:
