@@ -6,14 +6,14 @@ from django.conf import settings
 # Configuration file path
 CONFIG_FILE = os.path.join(settings.BASE_DIR, 'db_config.json')
 
-# Default configuration
+# Increased timeouts to accommodate longer-running analytical queries
 DEFAULT_CONFIG = {
-    'query_timeout': 30,
-    'connection_timeout': 10,
+    'query_timeout': 120,          # seconds (was 30)
+    'connection_timeout': 15,     # seconds (was 10)
     'pool_minsize': 1,
     'pool_maxsize': 10,
     'pool_recycle': 3600,
-    'max_execution_time': 30,
+    'max_execution_time': 120,    # seconds (was 30)
 }
 
 def load_config():
